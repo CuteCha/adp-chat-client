@@ -194,7 +194,7 @@ const fetchList = async () => {
     loading.value = true;
     try {
         const res = await describeChannelList(
-            { applicationId: props.channelSettingAppId, pageSize: 100 },
+            { applicationId: props.channelSettingAppId, pageSize: 100, agentId: props.channelSettingAgentId || undefined },
         );
         // 只展示已连接的渠道
         const items: RemoteTerminalItem[] = res.channelList
@@ -220,6 +220,20 @@ const fetchList = async () => {
 };
 
 /**
+ * 带 AgentId 守卫的渠道列表拉取。
+ * agentId 尚未就绪时跳过拉取（避免首次无过滤请求），由 watch 监听到 agentId 变化后自动触发。
+ */
+const fetchListWithAgentGuard = async () => {
+    if (!props.useInternalFetch) return;
+    if (!props.channelSettingAppId) return;
+
+    // agentId 尚未就绪，延迟到 watch 中 agentId 变化后再拉
+    if (!props.channelSettingAgentId) return;
+
+    await fetchList();
+};
+
+/**
  * 绑定成功后的延迟刷新：
  * 后端"新增/更新渠道"接口返回成功时，数据尚未完全同步到查询接口
  * （典型征兆：立即拉 DescribeChannelList 会返回带重复条目的脏数据）。
@@ -235,13 +249,13 @@ const refreshAfterBind = () => {
     }
     refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        fetchList();
+        fetchListWithAgentGuard();
     }, REFRESH_DELAY_AFTER_BIND);
 };
 
 // 首次挂载 + channelSettingAppId 变化时自动拉取
 onMounted(() => {
-    if (props.useInternalFetch && props.channelSettingAppId) fetchList();
+    if (props.useInternalFetch && props.channelSettingAppId) fetchListWithAgentGuard();
 });
 
 onBeforeUnmount(() => {
@@ -251,9 +265,9 @@ onBeforeUnmount(() => {
     }
 });
 watch(
-    () => [props.useInternalFetch, props.channelSettingAppId],
+    () => [props.useInternalFetch, props.channelSettingAppId, props.channelSettingAgentId],
     ([enabledNew], [enabledOld]) => {
-        if (props.useInternalFetch && props.channelSettingAppId) fetchList();
+        if (props.useInternalFetch && props.channelSettingAppId) fetchListWithAgentGuard();
         else if (enabledOld && !enabledNew) internalList.value = [];
     }
 );
@@ -280,7 +294,7 @@ const handleSetting = (event: Event) => {
 
 defineExpose({
     /** 手动刷新（如设置渠道后回调） */
-    reload: fetchList,
+    reload: fetchListWithAgentGuard,
     /** 展开 */
     expand: () => {
         if (!collapsed.value) return;

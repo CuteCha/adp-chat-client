@@ -2271,7 +2271,7 @@ const restoreChannelConversationById = (
     const task = (async (): Promise<boolean> => {
         let channelList: ChannelItem[] = [];
         try {
-            const res = await describeChannelList({ applicationId, pageSize: 100 });
+            const res = await describeChannelList({ applicationId, pageSize: 100, agentId: currentAgentId.value || undefined });
             channelList = (res.channelList || []).filter(
                 (ch) => ch.connectStatus === ClawChannelStatus.SUCCESS,
             );

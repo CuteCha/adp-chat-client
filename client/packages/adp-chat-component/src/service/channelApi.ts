@@ -109,8 +109,10 @@ export interface DescribeChannelListParams {
     applicationId: string;
     pageNumber?: number;
     pageSize?: number;
-    /** 过滤条件 */
+    /** 过滤条件（支持 ChannelType / ChannelStatus / AgentId / UserId 等维度） */
     filterList?: Array<{ Name: string; ValueList: string[]; Operator: number }>;
+    /** 按 AgentId 过滤（快捷方式，自动转换为 FilterList[{ Name: 'AgentId', ... }]） */
+    agentId?: string;
 }
 
 /** DescribeChannelList 响应 */
@@ -234,6 +236,11 @@ export async function describeChannelList(
     params: DescribeChannelListParams,
     apiPath?: string,
 ): Promise<DescribeChannelListResponse> {
+    // 合并 filterList：显式传入的 filterList + agentId 快捷参数
+    const filterList = [...(params.filterList || [])];
+    if (params.agentId) {
+        filterList.push({ Name: 'AgentId', ValueList: [params.agentId], Operator: 0 });
+    }
     const data = await forwardRequest(
         apiPath || defaultChannelApiConfig.describeChannelListApi!,
         params.applicationId,
@@ -242,7 +249,7 @@ export async function describeChannelList(
             Scene: ChannelScene.C_END,
             PageNumber: (params.pageNumber ?? 1) - 1,
             PageSize: params.pageSize ?? 100,
-            FilterList: params.filterList || [],
+            FilterList: filterList,
         },
     );
     const rawList = (data.ChannelList || data.channel_list || []) as ChannelRawItem[];

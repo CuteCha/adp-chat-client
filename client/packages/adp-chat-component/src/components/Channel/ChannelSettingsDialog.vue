@@ -218,7 +218,7 @@ const refreshList = async () => {
     loading.value = true;
     try {
         const res = await describeChannelList(
-            { applicationId: props.applicationId, pageSize: 100 },
+            { applicationId: props.applicationId, pageSize: 100, agentId: props.agentId || undefined },
             apiConfig.value.describeChannelListApi,
         );
         rawChannelList.value = res.channelList;
