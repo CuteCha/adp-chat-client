@@ -399,10 +399,11 @@ function getCreateTypeLabel(i: Record<string, unknown>) {
 /**
  * 获取插件子工具列表。
  *
- * 自 ListPlugins → DescribePluginSummaryList 升级后，列表接口不再返回工具明细，
+ * 自 ListPlugins → DescribePluginSummaryList 升级后，列表接口仅返回 ToolSummary 空壳
+ * （仅 ToolId，已在 connectorPluginApi.flattenPluginSummary 中过滤，不进入 Tools），
  * 需要在展开卡片时通过 DescribePlugin 按需拉取。本函数优先级：
  *   1) 本地缓存 toolDetailCache（已通过 ensurePluginTools 拉取过）
- *   2) item 自身的 Tools / ToolList（旧协议或后端透传场景）
+ *   2) item 自身的 Tools / ToolList（旧协议或后端透传的完整工具）
  */
 function getItemTools(i: Record<string, unknown>): Record<string, unknown>[] {
     const id = itemId(i);
@@ -559,7 +560,9 @@ async function onExpand(item: Record<string, unknown>) {
     expandedIds.value = new Set(expandedIds.value).add(id);
     // 不可用插件无需拉工具
     if (itemStatus(item) === 2) return;
-    // 命中缓存或自带 ToolList（旧协议）则不发起请求
+    // 命中缓存或自带完整 ToolList（旧协议）则不发起请求。
+    // v2 概要接口的 ToolSummary 空壳（仅 ToolId）已在 connectorPluginApi 层过滤，
+    // Tools 恒为 []，因此首次展开必然触发 DescribePlugin 懒加载。
     const inlineTools = ((item.tools || item.Tools || item.ToolList) as Record<string, unknown>[] | undefined) || [];
     if (toolDetailCache.value.has(id) || inlineTools.length > 0) {
         if (!toolDetailCache.value.has(id) && inlineTools.length > 0) {

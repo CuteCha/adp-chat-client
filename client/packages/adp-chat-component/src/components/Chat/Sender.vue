@@ -1064,6 +1064,7 @@ const handleStartRecord = async () => {
             asrWebSocket.value = new WebSocket(url);
             
             asrWebSocket.value.onopen = () => {
+                console.log('[ASR] websocket connected');
                 startRecording();
                 recordRef.value = setTimeout(() => {
                     if (recording.value) {
@@ -1076,6 +1077,8 @@ const handleStartRecord = async () => {
             };
             
             asrWebSocket.value.onmessage = (event) => {
+                // 原始消息日志放在 recording 判断之前，确保断开前的错误消息（如鉴权失败）不被吞掉
+                console.log('[ASR] websocket message:', event.data);
                 if (!recording.value) return;
                 const msg = JSON.parse(event.data);
                 if ('result' in msg) {
@@ -1091,12 +1094,18 @@ const handleStartRecord = async () => {
                 }
             };
             
-            asrWebSocket.value.onclose = () => {
+            asrWebSocket.value.onclose = (event) => {
+                // 1000=正常关闭；1006=异常断开；4002=鉴权失败（腾讯云 ASR）；4001=参数错误；4003=服务拒绝
+                console.warn('[ASR] websocket closed, code =', event.code, ', reason =', event.reason || '(empty)', ', wasClean =', event.wasClean);
                 recording.value = false;
                 if (recordRef.value) {
                     clearTimeout(recordRef.value);
                     recordRef.value = null;
                 }
+            };
+
+            asrWebSocket.value.onerror = (event) => {
+                console.error('[ASR] websocket error:', event);
             };
         } catch (error) {
             recording.value = false;
@@ -1121,6 +1130,7 @@ const startRecording = () => {
         }
     };
     recorder.value.OnError = (err: any) => {
+        console.error('[Recorder] OnError:', err);
         let errMsg: string;
         let errCode: MessageCode = MessageCode.RECORD_FAILED;
         if (err && typeof err === 'object' && 'code' in err) {
