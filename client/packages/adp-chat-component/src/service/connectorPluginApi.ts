@@ -126,6 +126,27 @@ export async function fetchPluginList(params: {
 }
 
 /**
+ * 判断 tool 是否为 ToolSummary 空壳。
+ *
+ * v2 DescribePluginSummaryList 的 PluginSummary.ToolList 每项是 ToolSummary
+ * （proto: message ToolSummary { string tool_id = 1 }），仅含 ToolId，
+ * 无 Name/Description/ToolConfig/Billing 等渲染与绑定所需字段。
+ * 空壳不能直接用于子工具展示，需通过 DescribePlugin 懒加载补全
+ * （对齐 gpt-demo parseV2PluginSummaryItem：概要接口 Tools 初始化为 []，展开时再拉取）。
+ */
+function isToolSummaryStub(t: Record<string, unknown>): boolean {
+    const keysWithValue = Object.keys(t).filter((k) => {
+        const v = t[k];
+        if (v === undefined || v === null) return false;
+        if (v === '') return false;
+        if (Array.isArray(v) && v.length === 0) return false;
+        return true;
+    });
+    // 除 ToolId 外无其他有值字段 → 空壳
+    return keysWithValue.every((k) => k === 'ToolId' || k === 'tool_id');
+}
+
+/**
  * 将 v2 PluginSummary 嵌套对象扁平化为旧 Plugin 结构，
  * 同时**保留**原始嵌套字段，避免任何调用方写法被破坏。
  *
@@ -149,10 +170,14 @@ function flattenPluginSummary(p: Record<string, unknown>): Record<string, unknow
     const mcpConfig = (config.MCPPluginConfig || {}) as Record<string, unknown>;
     const apiConfig = (config.ApiPluginConfig || {}) as Record<string, unknown>;
 
-    // 工具列表：v2 PluginSummary 不返回工具明细（仅在 DescribePlugin 时才有 ToolList）。
-    // 这里如果原始对象带了 Tools/ToolList（如 fetchPluginDetail 注入或旧协议返回）就一并扁平化。
+    // 工具列表：v2 DescribePluginSummaryList 的 PluginSummary.ToolList 是 ToolSummary 空壳
+    // （仅含 ToolId），直接平铺会让 UI 误判「列表已带工具明细」而跳过 DescribePlugin 懒加载，
+    // 展开出无名称/描述的空壳子工具。这里对齐 gpt-demo：空壳不进 Tools（保持 []，
+    // 展开时按需调 DescribePlugin 拉取完整明细）；原始 ToolId 列表透出到 AllToolIDs 供判定。
+    // 完整工具（DescribePlugin 详情 / 旧协议）非空壳，正常扁平化。
     const rawTools = (p.Tools || p.ToolList || []) as Record<string, unknown>[];
-    const tools = rawTools.map(flattenTool);
+    const realTools = rawTools.filter((t) => !isToolSummaryStub(t));
+    const tools = realTools.map(flattenTool);
 
     // 插件级 Header/Query（MCP 插件有；API 插件在 ApiPluginConfig.AuthConfig 中，无统一字段，按 MCP 优先取）
     const headers = (p.Headers || mcpConfig.PluginHeader || apiConfig.Header || []) as Record<string, unknown>[];
@@ -205,6 +230,8 @@ function flattenPluginSummary(p: Record<string, unknown>): Record<string, unknow
         Query: query,
         Tools: tools,
         ToolList: tools,
+        // 原始 ToolList 的 ToolId 列表（含概要接口空壳；仅供「已全部添加」等数量判定，不可用于展示）
+        AllToolIDs: rawTools.map((t) => ((t.ToolId || t.tool_id || '') as string)).filter(Boolean),
         // v2 协议不再返回 AuthMode/EnableRoleAuth，buildPluginConfig 默认值兜底（无鉴权）
         AuthMode: p.AuthMode ?? 0,
         EnableRoleAuth: !!p.EnableRoleAuth,

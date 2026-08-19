@@ -191,6 +191,12 @@ export interface SenderI18n {
   audioContextNotSupport?: string
   webAudioApiNotSupport?: string
   mediaStreamSourceNotSupport?: string
+  /** 麦克风权限被拒绝（含 iframe Permissions Policy 拦截场景） */
+  micPermissionDenied?: string
+  /** 未检测到可用的麦克风设备 */
+  micNotFound?: string
+  /** 麦克风被其他应用占用 */
+  micOccupied?: string
 }
 
 /** 文件预览面板国际化文本 */
@@ -397,6 +403,9 @@ export const defaultSenderI18n: Required<SenderI18n> = {
   audioContextNotSupport: '浏览器不支持AudioContext',
   webAudioApiNotSupport: '浏览器不支持webAudioApi相关接口',
   mediaStreamSourceNotSupport: '不支持MediaStreamSource',
+  micPermissionDenied: '麦克风权限被拒绝，请点击地址栏锁定图标将麦克风设为允许后重试；若页面嵌在 iframe 中，还需宿主页面声明 allow="microphone"',
+  micNotFound: '未检测到可用的麦克风设备',
+  micOccupied: '麦克风被其他应用占用，请关闭占用程序后重试',
 }
 
 /** 文件预览面板 i18n 默认值 */
@@ -529,6 +538,9 @@ export const defaultSenderI18nEn: Required<SenderI18n> = {
   audioContextNotSupport: 'Browser does not support AudioContext',
   webAudioApiNotSupport: 'Browser does not support Web Audio API',
   mediaStreamSourceNotSupport: 'MediaStreamSource is not supported',
+  micPermissionDenied: 'Microphone permission denied. Click the lock icon in the address bar and set Microphone to Allow, then retry. If this page is embedded in an iframe, the host page must declare allow="microphone"',
+  micNotFound: 'No microphone device detected',
+  micOccupied: 'Microphone is occupied by another application. Close it and retry',
 }
 
 /** 文件预览面板 i18n 英文默认值 */

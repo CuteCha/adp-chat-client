@@ -27,6 +27,9 @@ export const MessageCode = {
     AUDIO_CONTEXT_NOT_SUPPORT: 'AUDIO_CONTEXT_NOT_SUPPORT',
     WEB_AUDIO_API_NOT_SUPPORT: 'WEB_AUDIO_API_NOT_SUPPORT',
     MEDIA_STREAM_SOURCE_NOT_SUPPORT: 'MEDIA_STREAM_SOURCE_NOT_SUPPORT',
+    MIC_PERMISSION_DENIED: 'MIC_PERMISSION_DENIED',
+    MIC_NOT_FOUND: 'MIC_NOT_FOUND',
+    MIC_OCCUPIED: 'MIC_OCCUPIED',
 
     // 警告类
     ANSWERING: 'ANSWERING',
@@ -154,6 +157,21 @@ const MESSAGE_MAP: Record<MessageCode, MessageEntry> = {
         type: 'error',
         zh: '不支持MediaStreamSource',
         en: 'MediaStreamSource is not supported',
+    },
+    [MessageCode.MIC_PERMISSION_DENIED]: {
+        type: 'error',
+        zh: '麦克风权限被拒绝，请点击地址栏锁定图标将麦克风设为允许后重试；若页面嵌在 iframe 中，还需宿主页面声明 allow="microphone"',
+        en: 'Microphone permission denied. Click the lock icon in the address bar and set Microphone to Allow, then retry. If embedded in an iframe, the host page must declare allow="microphone"',
+    },
+    [MessageCode.MIC_NOT_FOUND]: {
+        type: 'error',
+        zh: '未检测到可用的麦克风设备',
+        en: 'No microphone device detected',
+    },
+    [MessageCode.MIC_OCCUPIED]: {
+        type: 'error',
+        zh: '麦克风被其他应用占用，请关闭占用程序后重试',
+        en: 'Microphone is occupied by another application. Close it and retry',
     },
 
     // 警告类

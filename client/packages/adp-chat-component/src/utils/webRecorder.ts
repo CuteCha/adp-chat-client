@@ -189,11 +189,21 @@ export default class WebRecorder {
         try {
             if (WebRecorder.isSupportAudioContext()) {
                 this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                // Chrome autoplay 策略：非用户手势上下文（如 WebSocket onopen 回调）中创建的
+                // AudioContext 初始为 suspended，不恢复则 AudioWorklet 不产出音频数据，
+                // ASR 服务端等不到音频会主动断开连接。这里主动 resume 兜底。
+                if (this.audioContext.state === 'suspended') {
+                    this.audioContext.resume().catch((e) => {
+                        console.error('[WebRecorder] audioContext resume failed:', e);
+                    });
+                }
+                console.log('[WebRecorder] AudioContext created, state =', this.audioContext.state);
             } else {
                 this.isLog && console.log(this.requestId, '浏览器不支持AudioContext', TAG);
                 this.OnError({ code: 'AUDIO_CONTEXT_NOT_SUPPORT' });
             }
         } catch (e) {
+            console.error('[WebRecorder] AudioContext init error:', e);
             this.isLog && console.log(this.requestId, '浏览器不支持webAudioApi相关接口', e, TAG);
             this.OnError({ code: 'WEB_AUDIO_API_NOT_SUPPORT' });
         }
@@ -270,6 +280,16 @@ export default class WebRecorder {
             return;
         }
 
+        // getUserMedia 授权后再次确保 AudioContext 处于 running（授权交互可恢复用户激活）
+        if (this.audioContext.state === 'suspended') {
+            try {
+                await this.audioContext.resume();
+            } catch (e) {
+                console.error('[WebRecorder] audioContext resume failed:', e);
+            }
+        }
+        console.log('[WebRecorder] getUserMedia success, audioContext state =', this.audioContext.state);
+
         if (this.mediaStreamSource) {
             this.mediaStreamSource.disconnect();
             this.mediaStreamSource = null;
@@ -295,6 +315,8 @@ export default class WebRecorder {
     }
 
     private getAudioFail(requestId: string, err: Error): void {
+        // 无条件输出：NotAllowedError=权限被拒 / NotFoundError=无麦克风 / NotReadableError=设备被占用
+        console.error('[WebRecorder] getUserMedia failed:', err?.name, '-', err?.message);
         if (err && (err as any).name === 'NotAllowedError') {
             this.isLog && console.log(requestId, '授权失败', JSON.stringify(err), TAG);
         }
@@ -369,8 +391,12 @@ export default class WebRecorder {
 
             mediaStreamSource.connect(myNode).connect(this.audioContext.destination);
         } catch (e) {
+            console.error('[WebRecorder] audioWorklet init failed, fallback to ScriptProcessor:', e);
             this.isLog && console.log(this.requestId, 'audioWorkletNodeDealAudioData catch error', JSON.stringify(e), TAG);
-            this.OnError(e);
+            // AudioWorklet 加载失败（典型：站点 CSP 拦截 blob: script）时降级到 ScriptProcessor 采集，
+            // 与上方 onprocessorerror/onmessageerror 的降级策略保持一致，而非直接报错终止录音。
+            // ScriptProcessor 是纯 JS API，不加载外部资源，不受 CSP 影响。
+            this.scriptNodeDealAudioData(mediaStreamSource, requestId);
         }
     }
 }

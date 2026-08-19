@@ -1119,6 +1119,47 @@ const handleStartRecord = async () => {
 }
 
 /**
+ * 麦克风权限被拒（NotAllowedError）时的诊断日志。
+ *
+ * 「浏览器已授权仍报权限错误」的常见根因：
+ *  1) 站点权限被拒：地址栏锁定图标中麦克风为「阻止」
+ *  2) iframe Permissions Policy 拦截：页面嵌在 iframe 中且宿主未声明 allow="microphone"，
+ *     此时浏览器不弹权限框，即使浏览器/系统层面已授权，iframe 内 getUserMedia 仍抛 NotAllowedError
+ *  3) 操作系统隐私设置禁用了浏览器访问麦克风（Windows 设置-隐私 / macOS 隐私与安全性）
+ */
+function logMicPermissionDiagnostics(): void {
+    let inIframe = false;
+    try {
+        inIframe = window.self !== window.top;
+    } catch {
+        // 跨域 iframe 访问 window.top 抛错，视为嵌套
+        inIframe = true;
+    }
+    const fp = (document as unknown as {
+        featurePolicy?: { allowsFeature?: (feature: string) => boolean };
+    }).featurePolicy;
+    const ua = navigator.userAgent;
+    console.error('[Recorder] mic diagnostics:', {
+        inIframe,
+        micAllowedByPermissionsPolicy: typeof fp?.allowsFeature === 'function' ? fp.allowsFeature('microphone') : 'unknown',
+        isSecureContext: window.isSecureContext,
+        // 企业微信(wxwork)/微信(MicroMessenger) 内置浏览器对网页 getUserMedia 支持极差：
+        // 多数版本不弹权限框直接 NotAllowedError，且无地址栏可修改站点权限。
+        // 命中时建议引导用户「在浏览器中打开」（右上角 ... 菜单）使用外部 Chrome。
+        uaContainsWxwork: ua.includes('wxwork'),
+        uaContainsWeChat: ua.includes('MicroMessenger'),
+        userAgent: ua,
+    });
+    if (navigator.permissions?.query) {
+        navigator.permissions.query({ name: 'microphone' } as unknown as PermissionDescriptor)
+            .then((status) => console.error('[Recorder] mic permission state:', status.state))
+            .catch(() => {
+                // 浏览器不支持 microphone 权限查询，忽略
+            });
+    }
+}
+
+/**
  * 开始录音（内部方法）
  */
 const startRecording = () => {
@@ -1148,6 +1189,23 @@ const startRecording = () => {
             } else {
                 errMsg = i18n.value.recordFailed || getMessage(MessageCode.RECORD_FAILED, props.language).message;
             }
+        } else if (err && typeof err === 'object' && 'name' in err) {
+            // getUserMedia 抛出的 DOMException：按 err.name 精确提示，避免笼统的「录音失败」
+            // NotAllowedError=权限被拒或被 Permissions Policy 拦截；NotFoundError=无麦克风设备；NotReadableError=设备被占用
+            const domErrorMap: Record<string, { i18nKey: keyof SenderI18n; messageCode: MessageCode }> = {
+                NotAllowedError: { i18nKey: 'micPermissionDenied', messageCode: MessageCode.MIC_PERMISSION_DENIED },
+                NotFoundError: { i18nKey: 'micNotFound', messageCode: MessageCode.MIC_NOT_FOUND },
+                NotReadableError: { i18nKey: 'micOccupied', messageCode: MessageCode.MIC_OCCUPIED },
+            };
+            const domMapping = domErrorMap[err.name as string];
+            if (domMapping) {
+                errMsg = i18n.value[domMapping.i18nKey] || getMessage(domMapping.messageCode, props.language).message;
+                errCode = domMapping.messageCode;
+            } else {
+                errMsg = i18n.value.recordFailed || getMessage(MessageCode.RECORD_FAILED, props.language).message;
+            }
+            // 权限被拒时输出诊断，区分站点权限 / iframe 策略 / 系统隐私设置
+            if (err.name === 'NotAllowedError') logMicPermissionDiagnostics();
         } else {
             errMsg = typeof err === 'string' ? err : (i18n.value.recordFailed || getMessage(MessageCode.RECORD_FAILED, props.language).message);
         }
