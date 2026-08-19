@@ -1051,20 +1051,32 @@ const handleSend = async function () {
 }
 
 /**
+ * 录音链路诊断统计（一次录音会话）。
+ * 生产环境定位问题用：点击时刻 / 已发送字节 / 首帧时刻，日志中输出各环节相对耗时。
+ * 注：Chrome 用户激活窗口约 5s，点击到 AudioContext 创建若超时，会被 autoplay 策略挂起。
+ */
+const asrDiag = { startTs: 0, sentBytes: 0, firstFrameAt: 0 };
+
+/**
  * 处理开始录音事件
  */
 const handleStartRecord = async () => {
     recording.value = true;
+    asrDiag.startTs = performance.now();
+    asrDiag.sentBytes = 0;
+    asrDiag.firstFrameAt = 0;
+    console.log('[ASR] startRecord clicked, useInternalRecord =', props.useInternalRecord, ', asrUrlApi =', props.asrUrlApi || '(default)');
     
     if (props.useInternalRecord) {
         try {
             const res = await getAsrUrl(props.asrUrlApi || undefined);
             inputValueBefore.value = getPlainText(editorHtml.value);
             const url = res.url;
+            console.log('[ASR] getAsrUrl done in', Math.round(performance.now() - asrDiag.startTs), 'ms since click, ws host =', url.split('/')[2] || '(unknown)');
             asrWebSocket.value = new WebSocket(url);
             
             asrWebSocket.value.onopen = () => {
-                console.log('[ASR] websocket connected');
+                console.log('[ASR] websocket connected in', Math.round(performance.now() - asrDiag.startTs), 'ms since click (超过 5000ms 意味着用户激活已过期，AudioContext 可能被 autoplay 策略挂起)');
                 startRecording();
                 recordRef.value = setTimeout(() => {
                     if (recording.value) {
@@ -1096,7 +1108,9 @@ const handleStartRecord = async () => {
             
             asrWebSocket.value.onclose = (event) => {
                 // 1000=正常关闭；1006=异常断开；4002=鉴权失败（腾讯云 ASR）；4001=参数错误；4003=服务拒绝
-                console.warn('[ASR] websocket closed, code =', event.code, ', reason =', event.reason || '(empty)', ', wasClean =', event.wasClean);
+                console.warn('[ASR] websocket closed, code =', event.code, ', reason =', event.reason || '(empty)', ', wasClean =', event.wasClean,
+                    ', sentBytes =', asrDiag.sentBytes, ', duration =', Math.round((performance.now() - asrDiag.startTs) / 1000) + 's',
+                    asrDiag.sentBytes === 0 ? '← 音频 0 字节：采集链路（getUserMedia/AudioContext/AudioWorklet）未产出数据' : '');
                 recording.value = false;
                 if (recordRef.value) {
                     clearTimeout(recordRef.value);
@@ -1166,8 +1180,15 @@ const startRecording = () => {
     const requestId = '0';
     recorder.value = new WebRecorder({ requestId });
     recorder.value.OnReceivedData = (data: any) => {
+        if (!asrDiag.firstFrameAt) {
+            asrDiag.firstFrameAt = performance.now();
+            console.log('[ASR] first audio frame at', Math.round(asrDiag.firstFrameAt - asrDiag.startTs), 'ms since click, size =', data.length);
+        }
+        asrDiag.sentBytes += data.length;
         if (asrWebSocket.value?.readyState === WebSocket.OPEN) {
             asrWebSocket.value?.send(data);
+        } else {
+            console.warn('[ASR] audio frame dropped: ws not open, readyState =', asrWebSocket.value?.readyState);
         }
     };
     recorder.value.OnError = (err: any) => {
@@ -1222,6 +1243,7 @@ const startRecording = () => {
 const handleStopRecord = () => {
     if (!recording.value) return;
     recording.value = false;
+    console.log('[ASR] stopRecord by user, sentBytes =', asrDiag.sentBytes, ', duration =', Math.round((performance.now() - asrDiag.startTs) / 1000) + 's');
     
     if (props.useInternalRecord) {
         recorder.value?.stop();

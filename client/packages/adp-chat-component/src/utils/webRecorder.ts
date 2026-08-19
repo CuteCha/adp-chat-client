@@ -198,6 +198,10 @@ export default class WebRecorder {
                     });
                 }
                 console.log('[WebRecorder] AudioContext created, state =', this.audioContext.state);
+                // 状态迁移日志：suspended -> running 的时刻是 resume 是否生效的直接证据
+                this.audioContext.onstatechange = () => {
+                    console.log('[WebRecorder] AudioContext state ->', this.audioContext?.state);
+                };
             } else {
                 this.isLog && console.log(this.requestId, '浏览器不支持AudioContext', TAG);
                 this.OnError({ code: 'AUDIO_CONTEXT_NOT_SUPPORT' });
@@ -217,6 +221,8 @@ export default class WebRecorder {
         } catch (e) {
         }
         this.destroyStream();
+        // 无条件输出采集统计：framesPushed = 0 说明采集链路未产出任何数据帧
+        console.log('[WebRecorder] stopped, framesPushed =', this.frameCount);
         this.isLog && console.log(this.requestId, `webRecorder stop ${this.sampleCount}/${this.bitCount}/${this.getDataCount}`, JSON.stringify(this.frameTime), TAG);
         this.OnStop(this.allAudioData);
     }
@@ -296,6 +302,13 @@ export default class WebRecorder {
         }
 
         this.audioTrack = stream.getAudioTracks()[0];
+        // 音轨设备信息：用于判断蓝牙耳机/虚拟声卡等设备层问题
+        try {
+            const settings = this.audioTrack?.getSettings ? this.audioTrack.getSettings() : {};
+            console.log('[WebRecorder] audio track:', this.audioTrack?.label || '(unknown)', ', settings =', JSON.stringify(settings));
+        } catch {
+            // 某些浏览器 getSettings 不可用，忽略
+        }
         const mediaStream = new MediaStream();
         if (this.audioTrack) {
             mediaStream.addTrack(this.audioTrack);
@@ -326,6 +339,7 @@ export default class WebRecorder {
     }
 
     private scriptNodeDealAudioData(mediaStreamSource: MediaStreamAudioSourceNode, requestId: string): void {
+        console.log('[WebRecorder] collecting via ScriptProcessor');
         if (!this.audioContext || !WebRecorder.isSupportCreateScriptProcessor(this.audioContext)) {
             this.isLog && console.log(this.requestId, '不支持createScriptProcessor', TAG);
             return;
@@ -362,6 +376,7 @@ export default class WebRecorder {
         try {
             const audioWorkletBlobURL = URL.createObjectURL(new Blob([audioWorkletCode], { type: 'text/javascript' }));
             await this.audioContext.audioWorklet.addModule(audioWorkletBlobURL);
+            console.log('[WebRecorder] AudioWorklet module loaded, collecting via AudioWorklet');
             URL.revokeObjectURL(audioWorkletBlobURL);
 
             const myNode = new AudioWorkletNode(this.audioContext, 'my-processor', { 

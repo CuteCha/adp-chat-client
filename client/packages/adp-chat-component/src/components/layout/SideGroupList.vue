@@ -162,6 +162,18 @@ const handleMenuSelect = (value: string, item: SideGroupItem) => {
 };
 
 /**
+ * TDropdown @click 回调适配：回调参数类型为 DropdownOption（string | number | object），
+ * 对象形态时取其 value 字段。做类型收敛，避免不同 tdesign-vue-next 小版本的
+ * 类型定义差异（data 可能为 undefined / 联合类型无 .value）导致编译失败。
+ */
+const onDropdownClick = (data: unknown, item: SideGroupItem): void => {
+    const value = (typeof data === 'object' && data !== null)
+        ? (data as Record<string, unknown>).value
+        : data;
+    handleMenuSelect(String(value ?? ''), item);
+};
+
+/**
  * 当前处于「更多操作」菜单展开态的列表项 id。
  * 用于在下拉菜单展开期间强制保持该项的三点按钮可见——否则鼠标移到浮层菜单上时，
  * 列表项失去 hover，三点按钮 display:none，触发元素消失导致菜单被关闭、点不到菜单项。
@@ -257,7 +269,7 @@ const handleMenuVisibleChange = (visible: boolean, item: SideGroupItem) => {
                     trigger="click"
                     placement="bottom-right"
                     :popup-props="{ onVisibleChange: (v: boolean) => handleMenuVisibleChange(v, item) }"
-                    @click="(data) => handleMenuSelect(String(data.value), item)"
+                    @click="(data) => onDropdownClick(data, item)"
                 >
                     <span
                         class="side-group-item__more"
