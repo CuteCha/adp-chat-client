@@ -13,7 +13,7 @@ import CronTask from '../CronTask/CronTask.vue';
 import CronTaskExecutionSidebar from '../CronTask/CronTaskExecutionSidebar.vue';
 import ChannelConversationPanel from '../Channel/ChannelConversationPanel.vue';
 import type { Application, AppPattern } from '../../model/application';
-import type { ChatConversation, Record, Reference, SseEvent, Content, ErrorEvent } from '../../model/chat-v2';
+import type { ChatConversation, Record, Reference, SseEvent, Content, ErrorEvent, Questionnaire } from '../../model/chat-v2';
 import type { CronTaskI18n, TimerTask, TimerTaskSummary } from '../../model/cronTask';
 import { getCronTaskI18nByLanguage } from '../../model/cronTask';
 import { AppTriggerScope, AppTriggerStatus } from '../../model/appTrigger';
@@ -269,6 +269,10 @@ const emit = defineEmits<{
     (e: 'dataLoaded', type: 'applications' | 'conversations' | 'chatList' | 'user' | 'systemConfig', data: any): void;
     /** Widget 事件（用于与 SSE/对话流交互） */
     (e: 'widgetEvent', event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string): void;
+    /** 反问澄清提交：questionnaire 为可直接上行的内容体（API 模式内部消化后再对外通知） */
+    (e: 'questionnaireSubmit', questionnaire: Questionnaire, recordId: string): void;
+    /** 反问澄清跳过：questionnaire 为原始内容体 */
+    (e: 'questionnaireSkip', questionnaire: Questionnaire, recordId: string): void;
     /** 定时任务面板可见性变化 */
     (e: 'cronTaskVisibleChange', visible: boolean): void;
     /** 定时任务：再次点击入口重置为初始 list 视图，请求外层清空 timertask 相关 URL 段（保留会话 id） */
@@ -2462,10 +2466,21 @@ const handleInternalCopy = async (rowtext: string | undefined, content: string |
 };
 
 /**
- * 发送 widget_action SSE 请求
- * 从 handleInternalWidgetEvent 中提取的 SSE 通信逻辑
+ * 通用「用户在既有消息上追加内容」的 SSE 骨架。
+ *
+ * 与 handleInternalSend 的差异：不预插入 placeholder-user，用户消息以后端 request_ack 事件里的
+ * Record 为准（通过占位插入到 assistant 占位前）。适用于 widget_action、questionnaire 这类
+ * 「已有 assistant record 上的二次交互」。
+ *
+ * @param contents 上行的 Contents 数组
+ * @param conversationId 当前会话 id；为空表示新会话，将走占位 key
+ * @param applicationId 应用 id；用于新会话首事件识别
  */
-const sendWidgetActionSSE = async (conversationId: string, applicationId: string, widgetAction: WidgetActionRequest) => {
+const runContentSSE = async (
+    contents: Content[],
+    conversationId: string,
+    applicationId: string,
+) => {
     let streamConversationKey = conversationId || currentConversationStateKey.value || createPendingConversationKey();
     currentConversationStateKey.value = streamConversationKey;
     const streamState = ensureConversationRuntimeState(streamConversationKey);
@@ -2501,8 +2516,6 @@ const sendWidgetActionSSE = async (conversationId: string, applicationId: string
     });
 
     streamState.abortController = new AbortController();
-
-    const contents = [{ Type: 'widget_action', WidgetAction: widgetAction }];
 
     await fetchSSE(
         () => sendMessage(
@@ -2567,7 +2580,7 @@ const sendWidgetActionSSE = async (conversationId: string, applicationId: string
                     return next;
                 };
 
-                // Widget action 的 request_ack 包含用户消息记录
+                // request_ack 包含用户消息记录：插入到 assistant 占位前
                 if (sseEvent.Type === 'request_ack') {
                     const nextUser = applySseEventToRecord(sseEvent, undefined);
                     if (nextUser) {
@@ -2614,6 +2627,23 @@ const sendWidgetActionSSE = async (conversationId: string, applicationId: string
             }
         }
     );
+};
+
+/**
+ * 发送 widget_action SSE 请求
+ */
+const sendWidgetActionSSE = async (conversationId: string, applicationId: string, widgetAction: WidgetActionRequest) => {
+    const contents: Content[] = [{ Type: 'widget_action', WidgetAction: widgetAction }];
+    await runContentSSE(contents, conversationId, applicationId);
+};
+
+/**
+ * 发送反问澄清 SSE 请求
+ * @param questionnaire 已由 ClassifyTag 构造好的、带 Answers 的完整 questionnaire 内容体
+ */
+const sendQuestionnaireSSE = async (conversationId: string, applicationId: string, questionnaire: Questionnaire) => {
+    const contents: Content[] = [{ Type: 'questionnaire', Questionnaire: questionnaire }];
+    await runContentSSE(contents, conversationId, applicationId);
 };
 
 // 内部 Widget 事件处理（API 模式）
@@ -2667,6 +2697,80 @@ const handleInternalWidgetEvent = async (event: CustomEvent, widgetRunId: string
     
     // 其他事件类型，只向外传递
     emit('widgetEvent', event, widgetRunId, widgetId, recordId);
+};
+
+/**
+ * 内部反问澄清提交处理（API 模式）
+ *
+ * 把 ClassifyTag 组装好的、带 Answers 的 questionnaire 内容体作为一条 Content 走 SSE
+ * （对齐 webim ChatProtocolHandler.sendQuestionnaireAnswer）。
+ *
+ * @param questionnaire ClassifyTag 组装好的、带 Answers 的完整内容体
+ * @param recordId      触发澄清的原始助手消息 recordId，仅用于回传给外层
+ */
+const handleInternalQuestionnaireSubmit = async (questionnaire: Questionnaire, recordId: string) => {
+    // 会话进行中 → 幂等丢弃（ClassifyTag 内部已置为已提交态，此处不用回滚 UI）
+    const currentKey = currentConversationStateKey.value;
+    if (currentKey && isConversationChatting(currentKey)) {
+        console.warn('[layout/Index] questionnaire submit: 会话正在进行中，跳过此次提交');
+        return;
+    }
+
+    if (!useApiMode.value) {
+        // 非 API 模式：交给外部宿主自行处理上行
+        emit('questionnaireSubmit', questionnaire, recordId);
+        return;
+    }
+
+    const conversationId = internalCurrentConversation.value?.Id || currentConversationStateKey.value;
+    const applicationId = internalCurrentApplication.value?.ApplicationId || '';
+
+    if (!conversationId) {
+        console.warn('[layout/Index] questionnaire submit: 没有当前会话');
+        emit('questionnaireSubmit', questionnaire, recordId);
+        return;
+    }
+
+    await sendQuestionnaireSSE(conversationId, applicationId, questionnaire);
+    emit('questionnaireSubmit', questionnaire, recordId);
+};
+
+/**
+ * 内部反问澄清跳过处理（API 模式）
+ *
+ * 对齐 webim 主流做法（client-v2 / assist-side / workflow-v2 / manage-skills / frequent-app）：
+ * 跳过澄清 = 发送一条普通文本消息（i18n `clarifySkip`，默认「跳过」/「Skip」）。
+ *
+ * 注意：不要把 `{Answers: []}` 或 `{Skipped: true}` 的 questionnaire 作为 Content 上行——
+ * 后端在这条通用消息通道上要求必须有可展示的用户消息内容，否则会返回
+ * "missing user message content in messages"。仅 SkillsCompareColumn 场景使用
+ * `{Skipped: true}` 单独的 sendQuestionnaireSkip 通道，与此处协议不同。
+ *
+ * @param questionnaire 原始 questionnaire 内容体（仅用于回传外层，函数本身不消费）
+ * @param recordId      触发澄清的助手消息 recordId（仅用于回传外层）
+ */
+const handleInternalQuestionnaireSkip = async (questionnaire: Questionnaire, recordId: string) => {
+    const currentKey = currentConversationStateKey.value;
+    if (currentKey && isConversationChatting(currentKey)) {
+        console.warn('[layout/Index] questionnaire skip: 会话正在进行中，跳过此次提交');
+        return;
+    }
+
+    if (!useApiMode.value) {
+        emit('questionnaireSkip', questionnaire, recordId);
+        return;
+    }
+
+    const conversationId = internalCurrentConversation.value?.Id || currentConversationStateKey.value || '';
+    const applicationId = internalCurrentApplication.value?.ApplicationId || '';
+
+    // 跳过文案取 i18n（默认「跳过」/「Skip」），对齐 webim `$t('跳过')` 行为
+    const skipText = mergedChatI18n.value.clarifySkip || '跳过';
+
+    // 走标准的 handleInternalSend：与用户手动发送"跳过"完全一致，
+    // 用户消息以正常文本气泡展示，避免任何"空 Content 上行"引发的后端校验失败。
+    await handleInternalSend(skipText, [], conversationId, applicationId);
+    emit('questionnaireSkip', questionnaire, recordId);
 };
 
 // 内部文件上传处理（API 模式）
@@ -3148,6 +3252,8 @@ defineExpose({
                 @message="(code: MessageCode, message: string) => emit('message', code, message)"
                 @conversationChange="(conversationId: string) => emit('conversationChange', conversationId)"
                 @widgetEvent="handleInternalWidgetEvent"
+                @questionnaireSubmit="handleInternalQuestionnaireSubmit"
+                @questionnaireSkip="handleInternalQuestionnaireSkip"
             >
                 <template #header-actions>
                     <!-- 渠道模式：展开列表 + 收起（隐藏定时任务按钮，互斥） -->

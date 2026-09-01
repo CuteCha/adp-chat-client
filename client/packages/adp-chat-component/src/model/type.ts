@@ -140,6 +140,25 @@ export interface ChatI18n {
   collapseWritingFiles?: string
   /** 修改了 N 个文件，支持 {count} 占位符 */
   collapseWroteFiles?: string
+  /* ───────── 反问澄清（questionnaire） ───────── */
+  /** 澄清卡片默认标题（后端未下发 title 时使用） */
+  clarifyTitle?: string
+  /** 多选题提示 */
+  clarifyMultiHint?: string
+  /** 提交按钮 */
+  clarifySubmit?: string
+  /** 已提交按钮态 */
+  clarifySubmitted?: string
+  /** 跳过按钮 */
+  clarifySkip?: string
+  /** 「其他」选项文案 */
+  clarifyOther?: string
+  /** 「其他」选项补充输入框 placeholder */
+  clarifyOtherPlaceholder?: string
+  /** 「其他」输入超出字数限制提示 */
+  clarifyOverLimit?: string
+  /** 已澄清摘要卡标题，支持 {count} 占位符 */
+  clarifySummaryTitle?: string
 }
 
 /** ChatItem 国际化文本 */
@@ -359,6 +378,17 @@ export const defaultChatI18n: Required<ChatI18n> = {
   collapseReadFiles: '读取了{count}个文件',
   collapseWritingFiles: '修改文件中',
   collapseWroteFiles: '修改了{count}个文件',
+
+  /* 反问澄清 */
+  clarifyTitle: '问题澄清',
+  clarifyMultiHint: '支持多选',
+  clarifySubmit: '提交',
+  clarifySubmitted: '已提交',
+  clarifySkip: '跳过',
+  clarifyOther: '其他',
+  clarifyOtherPlaceholder: '请输入补充内容',
+  clarifyOverLimit: '超出字数限制',
+  clarifySummaryTitle: '已澄清{count}个问题',
 }
 
 /** ChatItem i18n 默认值 */
@@ -494,6 +524,17 @@ export const defaultChatI18nEn: Required<ChatI18n> = {
   collapseReadFiles: 'Read {count} file(s)',
   collapseWritingFiles: 'Writing files...',
   collapseWroteFiles: 'Modified {count} file(s)',
+
+  /* Clarification (questionnaire) */
+  clarifyTitle: 'Clarification',
+  clarifyMultiHint: 'Multiple choice',
+  clarifySubmit: 'Submit',
+  clarifySubmitted: 'Submitted',
+  clarifySkip: 'Skip',
+  clarifyOther: 'Other',
+  clarifyOtherPlaceholder: 'Please enter additional details',
+  clarifyOverLimit: 'Exceeds character limit',
+  clarifySummaryTitle: 'Clarified {count} question(s)',
 }
 
 /** ChatItem i18n 英文默认值 */

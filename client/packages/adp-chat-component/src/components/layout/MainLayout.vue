@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import type { Application } from '../../model/application';
-import type { Record } from '../../model/chat-v2';
+import type { Record, Questionnaire } from '../../model/chat-v2';
 import type { FileProps } from '../../model/file';
 import { ScoreValue } from '../../model/chat-v2';
 import { MessageCode } from '../../model/messages';
@@ -180,6 +180,10 @@ const emit = defineEmits<{
      * @param recordId - 消息 record id
      */
     (e: 'widgetEvent', event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string): void;
+    /** 反问澄清提交：questionnaire 为可直接上行的内容体 */
+    (e: 'questionnaireSubmit', questionnaire: Questionnaire, recordId: string): void;
+    /** 反问澄清跳过：questionnaire 为原始内容体 */
+    (e: 'questionnaireSkip', questionnaire: Questionnaire, recordId: string): void;
 }>();
 
 const chatRef = ref<InstanceType<typeof Chat> | null>(null);
@@ -277,6 +281,8 @@ defineExpose({
                 @message="(code: MessageCode, message: string) => emit('message', code, message)"
                 @conversationChange="(conversationId: string) => emit('conversationChange', conversationId)"
                 @widgetEvent="(event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string) => emit('widgetEvent', event, widgetRunId, widgetId, recordId)"
+                @questionnaireSubmit="(questionnaire: Questionnaire, recordId: string) => emit('questionnaireSubmit', questionnaire, recordId)"
+                @questionnaireSkip="(questionnaire: Questionnaire, recordId: string) => emit('questionnaireSkip', questionnaire, recordId)"
             >
                 <template #empty-content>
                     <slot name="empty-content"></slot>

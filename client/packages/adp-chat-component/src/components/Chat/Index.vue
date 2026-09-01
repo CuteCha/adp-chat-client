@@ -45,7 +45,10 @@
                         </template>
                     </InfiniteLoading>
                     <template v-for="(item, index) in chatList" :key="item.RecordId">
-                        <div class="chat-item__content">
+                        <!-- 反问澄清答案回放（仅含 questionnaire 的 user record）整条隐藏，
+                             对齐 webim `_isQuestionnaireOnlyUserMsg`，避免空气泡撑高。
+                             index 仍走原始 chatList，保持 channelDividerIndex / hasSubsequentUserRecord 语义。 -->
+                        <div v-if="!isQuestionnaireOnlyUserRecord(item)" class="chat-item__content">
                             <Checkbox class="share-checkbox" :checked="selectedIds?.includes(item.RecordId)"
                                 v-if="isSelecting" @change="(e) => onSelectIds(item.RecordId, e)" />
                             <div style="width: 100%">
@@ -65,12 +68,17 @@
                                     :mentionKnowledge="mentionKnowledge"
                                     :mentionTools="mentionTools"
                                     :mentionConnectors="mentionConnectors"
+                                    :readonly="readonly"
+                                    :hasSubsequentUserRecord="hasSubsequentUserRecord(index)"
+                                    :historyQuestionnaireSkipped="isHistoryQuestionnaireSkipped(index)"
                                     @resend="onResend"
                                     @share="onShare"
                                     @rate="onRate"
                                     @copy="onCopy"
                                     @sendMessage="inputEnter"
                                     @widgetEvent="onWidgetEvent"
+                                    @questionnaireSubmit="onQuestionnaireSubmit"
+                                    @questionnaireSkip="onQuestionnaireSkip"
                                 />
                             </div>
                         </div>
@@ -168,6 +176,7 @@ import InfiniteLoading from 'vue-infinite-loading'
 import { Chat as TChat } from '@tdesign-vue-next/chat'
 import { Checkbox, Loading as TLoading, Card as TCard, Checkbox as TCheckbox, Divider as TDivider } from 'tdesign-vue-next'
 import type { Record } from '../../model/chat-v2'
+import type { Questionnaire } from '../../model/chat-v2'
 import type { NormalizedSkill, AgentSkillInfo } from '../../model/skills'
 import { normalizeSkill } from '../../composables/useSkills'
 import { useAgentStore } from '../../composables/useAgentStore'
@@ -192,6 +201,11 @@ export interface Props extends ChatRelatedProps {
     chatList?: Record[];
     /** 是否正在聊天中 */
     isChatting?: boolean;
+    /**
+     * 是否为只读环境（如分享落地页）。
+     * 为 true 时反问澄清卡片禁止访客操作。
+     */
+    readonly?: boolean;
     /** 当前应用ID */
     currentApplicationId?: string;
     /** 当前应用头像 */
@@ -245,6 +259,7 @@ const props = withDefaults(defineProps<Props>(), {
     chatId: '',
     chatList: () => [],
     isChatting: false,
+    readonly: false,
     currentApplicationId: '',
     currentApplicationAvatar: '',
     currentApplicationName: '',
@@ -331,6 +346,10 @@ const emit = defineEmits<{
     (e: 'conversationChange', conversationId: string): void;
     /** widget 事件（用于与 SSE/对话流交互） */
     (e: 'widgetEvent', event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string): void;
+    /** 反问澄清提交：questionnaire 为可直接上行的内容体 */
+    (e: 'questionnaireSubmit', questionnaire: Questionnaire, recordId: string): void;
+    /** 反问澄清跳过：questionnaire 为原始内容体 */
+    (e: 'questionnaireSkip', questionnaire: Questionnaire, recordId: string): void;
 }>();
 
 /**
@@ -454,6 +473,41 @@ watch(skillsAppId, (val) => {
  * 计算属性：实际使用的聊天列表
  */
 const chatList = computed(() => props.chatList.length > 0 ? props.chatList : internalChatList.value);
+
+/**
+ * 判断 record 是否为「反问澄清答案回放」——即 role:user 且 contents 仅含 questionnaire（无可展示文本）。
+ *
+ * 后端会把「用户提交澄清答案」的上行消息回放为 role:user 的历史消息，contents 里只有 questionnaire 类型
+ * （text 为空）。这类 record 若直接渲染会撑出一个空气泡（外层还有 padding 会造成明显视觉断层），
+ * 且澄清结果已由前一条 assistant reply 的「已澄清 N 个问题」摘要展示，无需重复渲染。
+ * → 对齐 webim `assist-chat.vue._isQuestionnaireOnlyUserMsg`：模板层整条 v-if 剔除。
+ *
+ * 注意：仅在渲染 v-for 处剔除，不改动 chatList / selectedIds / channelDividerIndex / hasSubsequentUserRecord
+ * 等原始数据依赖，index 与 chatList 保持一致。
+ */
+const isQuestionnaireOnlyUserRecord = (record: Record): boolean => {
+    if (record.Role !== 'user') return false;
+    const messages = record.Messages ?? [];
+    if (messages.length === 0) return false;
+    // 与 ChatItem.primaryMessage 对齐：优先取 type='question' 的 Message，兜底第一条
+    const primary = messages.find(m => m.Type === 'question') ?? messages[0];
+    const contents = primary?.Contents;
+    if (!contents?.length) return false;
+    let hasQuestionnaire = false;
+    for (const content of contents) {
+        const type = content.Type;
+        if (type === 'questionnaire') {
+            hasQuestionnaire = true;
+            continue;
+        }
+        if (type === 'text') {
+            if (!content.Text) continue;
+            return false;
+        }
+        return false;
+    }
+    return hasQuestionnaire;
+};
 
 /**
  * 是否处于选择分享状态
@@ -826,6 +880,69 @@ const onCopy = (rowtext: string | undefined, content: string | undefined, type: 
 const onWidgetEvent = (event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string) => {
     emit('widgetEvent', event, widgetRunId, widgetId, recordId);
 }
+
+/**
+ * 判断指定下标之后是否还存在用户 Record。
+ *
+ * 用于反问澄清的「已过期」判定：用户没有提交/跳过澄清就继续发起了新一轮对话，
+ * 此时该澄清卡应折叠为「已澄清 0 个问题」且不再允许提交。
+ *
+ * @param index 当前 Record 在 chatList 中的下标
+ */
+const hasSubsequentUserRecord = (index: number): boolean => {
+    const list = chatList.value;
+    for (let i = index + 1; i < list.length; i++) {
+        if (list[i]?.Role === 'user') return true;
+    }
+    return false;
+};
+
+/**
+ * 判断当前 assistant Record 之后的**第一条**用户 Record 是否是主动"跳过"（纯文本"跳过"）。
+ *
+ * 对齐 webim `ReplyRenderer._isQuestionnaireSkippedInHistory`：
+ * 用户点击"跳过"后我们上行的是纯文本消息（对齐 webim `assist-side.onQuestionnaireSkip`），
+ * 页面刷新后仅凭 `hasSubsequentUserRecord`（=true）只能得到「已过期」语义。这里进一步
+ * 识别"跳过"文本，让 ChatItem 直接把它当作"已提交"处理，与 webim 行为完全一致。
+ *
+ * 注意：只判断**紧邻的下一条 user record**——若中间已经又开始了别的对话，就不算跳过历史。
+ *
+ * @param index 当前 Record 在 chatList 中的下标
+ */
+const isHistoryQuestionnaireSkipped = (index: number): boolean => {
+    const list = chatList.value;
+    const skipText = (i18n.value.clarifySkip || '跳过').trim();
+    for (let i = index + 1; i < list.length; i++) {
+        const next = list[i];
+        if (next?.Role !== 'user') continue;
+        // 找到之后的第一条 user record，判断其是否为纯文本"跳过"
+        const messages = next.Messages ?? [];
+        const primary = messages.find(m => m.Type === 'question') ?? messages[0];
+        const contents = primary?.Contents ?? [];
+        if (!contents.length) return false;
+        // 只允许 text 类型且文本为"跳过"；其它 content 类型直接判否
+        for (const c of contents) {
+            if (c.Type === 'text') {
+                if ((c.Text ?? '').trim() === skipText) return true;
+                return false;
+            }
+            // 非 text（file/widget/questionnaire 等）不视为跳过
+            return false;
+        }
+        return false;
+    }
+    return false;
+};
+
+/** 反问澄清提交：向上抛出可直接发送的 questionnaire 内容体 */
+const onQuestionnaireSubmit = (questionnaire: Questionnaire, recordId: string) => {
+    emit('questionnaireSubmit', questionnaire, recordId);
+};
+
+/** 反问澄清跳过 */
+const onQuestionnaireSkip = (questionnaire: Questionnaire, recordId: string) => {
+    emit('questionnaireSkip', questionnaire, recordId);
+};
 
 /**
  * 选择/取消选择消息ID

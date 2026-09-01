@@ -14,6 +14,7 @@ export type ContentType =
   | 'custom_variables'
   | 'widget_action'
   | 'json_text'
+  | 'questionnaire'
 
 export type MessageType =
   | 'reply'
@@ -39,6 +40,7 @@ export interface Content {
   Widget?: Widget
   CustomVariables?: { [key: string]: string }
   WidgetAction?: WidgetAction
+  Questionnaire?: Questionnaire
 }
 
 export interface Image {
@@ -83,6 +85,153 @@ export interface Widget {
 export interface QuoteInfo {
   Position: number
   Index: number
+}
+
+/**
+ * 反问澄清（questionnaire）问题类型。
+ * 与 smart-webim / gpt-demo 后端协议保持一致，不可变更。
+ */
+export const QuestionnaireQuestionType = {
+  /** 单选 */
+  Single: 1,
+  /** 多选 */
+  Multiple: 2,
+} as const
+export type QuestionnaireQuestionType =
+  typeof QuestionnaireQuestionType[keyof typeof QuestionnaireQuestionType]
+
+/**
+ * 澄清问题的候选项。
+ * 字段为 PascalCase，与 tcadp 其它 v2 协议结构保持一致。
+ * 注意：smart-webim 在传输层做了 snake_case 归一，tcadp 无该转换层，
+ * 直接消费服务端下发的 PascalCase，因此此处同时兼容小写写法以防御历史数据。
+ */
+export interface QuestionnaireOption {
+  /** 选项文案 */
+  Label?: string
+  /** 选项补充描述 */
+  Description?: string
+  /** 选项文案（小写写法，兼容历史数据） */
+  label?: string
+  /** 选项补充描述（小写写法，兼容历史数据） */
+  description?: string
+}
+
+/**
+ * 单条澄清问题。
+ */
+export interface QuestionnaireQuestion {
+  /** 问题序号，归一化后作为 questionId 使用 */
+  Index?: number
+  /** 问题文本 */
+  Question?: string
+  /** 问题类型：1=单选，2=多选 */
+  Type?: QuestionnaireQuestionType
+  /** 是否必答 */
+  Required?: boolean
+  /** 候选项列表；「其他」选项由前端自动追加，后端不下发 */
+  Options?: QuestionnaireOption[]
+  /** 以下为小写写法，兼容历史数据 */
+  index?: number
+  question?: string
+  type?: QuestionnaireQuestionType
+  required?: boolean
+  options?: QuestionnaireOption[]
+}
+
+/**
+ * 澄清答案（上行提交与历史回显共用同一结构）。
+ * 后端以问题文本作为关联键，并以 SelectedLabels 承载选中的文案。
+ */
+export interface QuestionnaireAnswer {
+  /** 对应的问题文本 */
+  Question?: string
+  /** 选中的选项文案；单选也统一为长度 1 的数组 */
+  SelectedLabels?: string[]
+  /** 以下为兼容写法（smart-webim 归一后的 snake_case / 驼峰） */
+  question?: string
+  selected_labels?: string[]
+  selectedLabels?: string[]
+}
+
+/**
+ * 反问澄清内容体，挂在 Content.Questionnaire 上。
+ * 历史消息中 Answers 有值表示用户已提交过；为空则可能是未作答或已跳过。
+ */
+export interface Questionnaire {
+  /** 卡片标题，缺省时前端回落为「问题澄清」 */
+  Title?: string
+  /** 问题列表 */
+  Questions?: QuestionnaireQuestion[]
+  /** 已提交的答案，用于历史回显 */
+  Answers?: QuestionnaireAnswer[]
+  /** 以下为小写写法，兼容历史数据 */
+  title?: string
+  questions?: QuestionnaireQuestion[]
+  answers?: QuestionnaireAnswer[]
+}
+
+/** 归一化后的澄清选项，供 ClassifyTag 直接消费 */
+export interface NormalizedQuestionnaireOption {
+  label: string
+  description: string
+}
+
+/** 归一化后的澄清问题，供 ClassifyTag 直接消费 */
+export interface NormalizedQuestionnaireQuestion {
+  /** 归一化后的问题标识，取自 index，缺省时回落为数组下标 */
+  id: number
+  /** 问题文本 */
+  text: string
+  /** 问题类型：1=单选，2=多选 */
+  type?: QuestionnaireQuestionType
+  /** 是否必答 */
+  required?: boolean
+  /** 候选项列表（不含前端追加的「其他」） */
+  options: NormalizedQuestionnaireOption[]
+}
+
+/** 归一化后的澄清数据，供渲染层直接消费 */
+export interface NormalizedQuestionnaire {
+  title: string
+  questions: NormalizedQuestionnaireQuestion[]
+  answers: QuestionnaireAnswer[]
+}
+
+/**
+ * ClassifyTag 历史回显入参。
+ * 单选使用 selectedIndex，多选使用 selectedIndices。
+ */
+export interface QuestionnaireDefaultAnswer {
+  questionId: number
+  selectedIndex?: number
+  selectedIndices?: number[]
+}
+
+/**
+ * ClassifyTag 提交事件回传的单题结果。
+ * 单选与多选字段同时提供，以兼容不同消费方（与 lke-component 行为一致）。
+ */
+export interface QuestionnaireSubmitItem {
+  questionId: string
+  questionText: string
+  isMulti: boolean
+  /** 单选选中文案；多选时取首个 */
+  selectedOption: string
+  /** 全部选中文案 */
+  selectedOptions: string[]
+  /** 单选选中下标；多选时取首个，无选中为 -1 */
+  selectedIndex: number
+  /** 全部选中下标 */
+  selectedIndices: number[]
+  /** 是否选中了「其他」选项 */
+  isOther: boolean
+}
+
+/** 已澄清摘要卡的单行数据 */
+export interface QuestionnaireSummaryItem {
+  question: string
+  answerLabel: string
 }
 
 export interface Reference {

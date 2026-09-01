@@ -2,9 +2,14 @@
 <script setup lang="tsx">
 import { ref, computed, watch } from 'vue';
 import type { Content, Message, QuoteInfo, Record as RecordV2, Reference as ReferenceV2, FileInfo } from '../../model/chat-v2';
+import type {
+    Questionnaire,
+    QuestionnaireAnswer,
+    QuestionnaireSubmitItem,
+} from '../../model/chat-v2';
 import { ScoreValue } from '../../model/chat-v2';
 import type { CommonLayoutProps, ChatItemI18n, ChatI18n, ChatMode } from '../../model/type';
-import { commonLayoutPropsDefaults, defaultChatItemI18n } from '../../model/type';
+import { commonLayoutPropsDefaults, defaultChatItemI18n, defaultChatI18n, defaultChatI18nEn } from '../../model/type';
 import {  ChatItem as TChatItem } from '@tdesign-vue-next/chat';
 import { Tooltip, Loading as TLoading, Link as TLink, Dialog as TDialog } from 'tdesign-vue-next';
 import OptionCard from '../Common/OptionCard.vue';
@@ -15,7 +20,18 @@ import WidgetActionTag from '../Common/WidgetActionTag.vue';
 import CustomizedIcon from '../CustomizedIcon.vue';
 import CollapsibleMessageGroup from './CollapsibleMessageGroup.vue';
 import type { CollapseKind } from './CollapsibleMessageGroup.vue';
+import ClassifyTag from './ClassifyTag.vue';
+import ClassifySummary from './ClassifySummary.vue';
 import { widgetContentToMarkdown } from '../../utils/mergeRecord-v2';
+import {
+    pickQuestionnaireContent,
+    normalizeQuestionnaire,
+    buildDefaultAnswers,
+    buildSubmitAnswers,
+    buildQuestionnairePayload,
+    countAnswered,
+    buildSummaryItems,
+} from '../../utils/questionnaire';
 import type { NormalizedSkill } from '../../model/skills';
 
 interface Props extends CommonLayoutProps {
@@ -47,6 +63,25 @@ interface Props extends CommonLayoutProps {
     mentionTools?: NormalizedSkill[];
     /** 已注册 connectors 列表 */
     mentionConnectors?: NormalizedSkill[];
+    /**
+     * 是否为只读环境（如分享落地页）。
+     * 为 true 时反问澄清卡片禁止访客操作。
+     */
+    readonly?: boolean;
+    /**
+     * 当前 Record 之后是否已存在新一轮用户输入。
+     * 由父级根据完整会话列表计算并下传，用于判定反问澄清是否「已过期」：
+     * 用户没有提交/跳过澄清就继续对话时，澄清卡应折叠为「已澄清 0 个问题」且不可再提交。
+     */
+    hasSubsequentUserRecord?: boolean;
+    /**
+     * 历史回显：当前 assistant Record 之后紧邻的一条用户消息是纯文本「跳过」。
+     *
+     * 用户主动点击「跳过」时，前端上行的是纯文本消息（对齐 webim `assist-side.onQuestionnaireSkip`），
+     * 页面刷新后仅凭 hasSubsequentUserRecord 只能得到「过期」语义。此标记让 ChatItem 直接
+     * 把它当作「已提交（=跳过）」处理，与 webim `_isQuestionnaireSkippedInHistory` 行为对齐。
+     */
+    historyQuestionnaireSkipped?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -61,6 +96,9 @@ const props = withDefaults(defineProps<Props>(), {
     mentionKnowledge: () => [],
     mentionTools: () => [],
     mentionConnectors: () => [],
+    readonly: false,
+    hasSubsequentUserRecord: false,
+    historyQuestionnaireSkipped: false,
 });
 
 // 合并默认值和传入值
@@ -77,6 +115,10 @@ const emit = defineEmits<{
     (e: 'sendMessage', message: string): void;
     /** widget 事件（用于与 SSE/对话流交互） */
     (e: 'widgetEvent', event: CustomEvent, widgetRunId: string, widgetId: string, recordId: string): void;
+    /** 反问澄清提交：payload 为可直接上行的 Questionnaire 内容体 */
+    (e: 'questionnaireSubmit', questionnaire: Questionnaire, recordId: string): void;
+    /** 反问澄清跳过：questionnaire 为原始内容体，宿主可据此上行「已跳过」或直接丢弃 */
+    (e: 'questionnaireSkip', questionnaire: Questionnaire, recordId: string): void;
 }>();
 
 // 响应式变量
@@ -140,7 +182,16 @@ const extractMessageText = (message?: Message) => {
 };
 
 const displayText = computed(() => {
-    return extractMessageText(primaryMessage.value);
+    const text = extractMessageText(primaryMessage.value);
+    if (text) return text;
+    // 错误态兜底（对齐 webim）：后端可能只下发 Status=failed + StatusDesc="回复失败"
+    // 而 contents 为空。webim 的 SseV2ProtocolHandler 会把 StatusDesc 写成消息文本
+    // （findedMsg.text = message.StatusDesc）展示给用户；这里同样以 StatusDesc 作为
+    // 错误文案 fallback，优先消息级、其次 Record 级。两者皆空时返回空串 → 整条隐藏。
+    if (isError.value && !isFromSelf.value) {
+        return primaryMessage.value?.StatusDesc?.trim() || record.value.StatusDesc?.trim() || '';
+    }
+    return '';
 });
 
 const reasoningMessages = computed(() => {
@@ -353,12 +404,16 @@ const isFinal = computed(() => {
 
 /**
  * assistant 消息是否有可展示内容。
- * 判定维度：正文文本 / 工具调用分组 / 图片·文件附件 / 深度思考 / 引用 / 选项卡 / 错误态。
+ * 判定维度：正文文本 / 工具调用分组 / 图片·文件附件 / 深度思考 / 引用 / 选项卡。
  * 用户消息不受此限制（恒为 true）。
+ *
+ * 注意：**不要**因为 `isError` 就无脑返回 true。错误态只是给气泡换个红边框/红字色的
+ * 视觉皮肤（.chat-item--error），需要内部真实有可展示内容（如错误文案 / renderItems）
+ * 才有意义；否则会渲染成一个只有 1px `#ffd8d4` 红边框、内部空空的盒子——即用户看到的
+ * "一条莫名其妙的橙色线条"。
  */
 const hasAssistantContent = computed(() => {
     if (isFromSelf.value) return true;
-    if (isError.value) return true;
     if (useClawRender.value) return renderItems.value.length > 0;
     return !!displayText.value
         || reasoningContents.value.length > 0
@@ -370,11 +425,12 @@ const hasAssistantContent = computed(() => {
 
 /**
  * 是否渲染整条消息气泡（含操作按钮）。
- * - 用户消息：始终渲染；
+ * - 用户消息：默认始终渲染；但「反问澄清答案回放」（仅含 questionnaire 的 user record）整条隐藏；
  * - assistant 流式生成中的最后一条：渲染（可能正在产出，需展示 loading / 逐步内容）；
  * - 其余 assistant：仅在「有可展示内容」时渲染，避免出现空的 md-content-container 与孤立操作按钮。
  */
 const shouldRenderItem = computed(() => {
+    if (isQuestionnaireAnswerRecord.value) return false;
     if (isFromSelf.value) return true;
     if (props.isStreamLoad && props.isLastMsg) return true;
     return hasAssistantContent.value;
@@ -420,6 +476,42 @@ const isWidgetAction = computed(() => {
     if (!message?.Contents?.length) return false;
     // 检查是否有 widget_action 类型的 content
     return message.Contents.some(content => content.Type === 'widget_action');
+});
+
+/**
+ * 用户消息是否为「反问澄清答案回放」——应整条隐藏。
+ *
+ * 后端会把「用户提交澄清答案」的上行消息回放为 role:user 的历史消息，contents 里
+ * 只有 questionnaire 类型（text 为空）。若按普通用户消息渲染会得到一个空气泡（甚至
+ * 撑出 toolbar），澄清结果已由前一条 assistant reply 上的「已澄清 N 个问题」摘要
+ * 展示，无需重复渲染 → 对齐 webim `assist-chat.vue._isQuestionnaireOnlyUserMsg`：
+ * 整条跳过。
+ *
+ * 严格条件（避免误伤）：
+ *   1. contents 必须非空
+ *   2. 至少 1 个 questionnaire 类型 content
+ *   3. 其余 content 必须是空 text（无 text/markdown 文本），不能含 file/widget/widget_action 等
+ */
+const isQuestionnaireAnswerRecord = computed(() => {
+    if (!isFromSelf.value) return false;
+    const contents = primaryMessage.value?.Contents;
+    if (!contents?.length) return false;
+    let hasQuestionnaire = false;
+    for (const content of contents) {
+        const type = content.Type;
+        if (type === 'questionnaire') {
+            hasQuestionnaire = true;
+            continue;
+        }
+        if (type === 'text') {
+            // 允许空 text 与 questionnaire 共存（占位内容）
+            if (!content.Text) continue;
+            return false;
+        }
+        // 其他任何非空 content（file/widget/widget_action/option_cards 等）→ 不视为纯回放
+        return false;
+    }
+    return hasQuestionnaire;
 });
 
 const recordScore = computed(() => record.value.Score);
@@ -548,6 +640,134 @@ const handleWidgetEvent = (event: CustomEvent, widgetRunId: string, widgetId: st
     emit('widgetEvent', event, widgetRunId, widgetId, record.value.RecordId || '');
 };
 
+/* ───────────────────────── 反问澄清（questionnaire） ─────────────────────────
+ * 四种状态：
+ *   待澄清   —— 未提交且未过期，渲染可交互的 ClassifyTag
+ *   已澄清   —— 用户已提交/跳过，渲染 ClassifySummary 摘要
+ *   已过期   —— 未提交但后续已有新一轮用户输入，渲染摘要且标题为「已澄清 0 个问题」并默认折叠
+ *   只读     —— 分享落地页等场景，ClassifyTag 禁用交互
+ * 行为与 smart-webim 保持一致。
+ */
+
+/** 澄清相关的 i18n（复用 ChatI18n 的中英默认值 + 外部覆盖） */
+const clarifyI18n = computed(() => {
+    const defaults = props.language?.startsWith('en') ? defaultChatI18nEn : defaultChatI18n;
+    return { ...defaults, ...props.chatI18n };
+});
+
+/** 本地提交状态：提交/跳过后立即切换视图，不等待服务端回写 */
+const questionnaireSubmitted = ref(false);
+/**
+ * 提交瞬间的本地答案缓存。
+ * 必须有：服务端把 answers 回写到 Contents 之前，摘要若直接读 Contents 会误显示为「跳过」。
+ */
+const localQuestionnaireAnswers = ref<QuestionnaireAnswer[] | null>(null);
+
+/** 从 assistant 的 reply 消息中提取原始澄清内容体 */
+const rawQuestionnaire = computed<Questionnaire | null>(() => {
+    if (isFromSelf.value) return null;
+    for (const message of messages.value) {
+        const found = pickQuestionnaireContent(message.Contents);
+        if (found) return found;
+    }
+    return null;
+});
+
+/** 归一化后的澄清数据 */
+const questionnaireData = computed(() =>
+    normalizeQuestionnaire(rawQuestionnaire.value, clarifyI18n.value.clarifyTitle)
+);
+
+/** 历史消息中是否已存在答案（刷新后回显用） */
+const hasHistoryAnswers = computed(() => (questionnaireData.value?.answers.length ?? 0) > 0);
+
+/** 是否已提交（本地提交 或 历史已有答案 或 历史紧邻「跳过」文本回显） */
+const isQuestionnaireSubmitted = computed(
+    () => questionnaireSubmitted.value || hasHistoryAnswers.value || props.historyQuestionnaireSkipped
+);
+
+/**
+ * 是否「已过期」：未提交，但该轮之后已经出现新一轮用户输入。
+ * 已显式提交/跳过的不算过期。
+ */
+const isQuestionnaireExpired = computed(() => {
+    if (!questionnaireData.value) return false;
+    if (isQuestionnaireSubmitted.value) return false;
+    return props.hasSubsequentUserRecord;
+});
+
+/** 是否渲染摘要卡（已提交或已过期） */
+const showQuestionnaireSummary = computed(
+    () => Boolean(questionnaireData.value) && (isQuestionnaireSubmitted.value || isQuestionnaireExpired.value)
+);
+
+/** 是否渲染可交互卡（未提交且未过期） */
+const showQuestionnaireTag = computed(
+    () => Boolean(questionnaireData.value) && !isQuestionnaireSubmitted.value && !isQuestionnaireExpired.value
+);
+
+/** 已澄清个数（过期视为 0；跳过时为 0，不兜底为题目总数） */
+const questionnaireAnsweredCount = computed(() =>
+    countAnswered(questionnaireData.value, {
+        localAnswers: localQuestionnaireAnswers.value,
+        isExpired: isQuestionnaireExpired.value,
+        isSubmitted: isQuestionnaireSubmitted.value,
+    })
+);
+
+/** 摘要卡标题，如「已澄清 2 个问题」 */
+const questionnaireSummaryTitle = computed(() =>
+    clarifyI18n.value.clarifySummaryTitle.replace('{count}', String(questionnaireAnsweredCount.value))
+);
+
+/** 摘要卡内容 */
+const questionnaireSummaryItems = computed(() =>
+    buildSummaryItems(
+        questionnaireData.value,
+        clarifyI18n.value.clarifySkip,
+        localQuestionnaireAnswers.value
+    )
+);
+
+/** 历史回显：把服务端 answers 映射为 ClassifyTag 的 defaultAnswers */
+const questionnaireDefaultAnswers = computed(() =>
+    buildDefaultAnswers(questionnaireData.value, isQuestionnaireSubmitted.value)
+);
+
+/** 提交：先写本地缓存与已提交态，再上抛可直接发送的 Questionnaire */
+const handleQuestionnaireSubmit = (result: QuestionnaireSubmitItem[]) => {
+    // 幂等：避免重复提交导致发送两次 Query
+    if (isQuestionnaireSubmitted.value) return;
+    const raw = rawQuestionnaire.value;
+    if (!raw) return;
+
+    const answers = buildSubmitAnswers(result);
+    // 顺序重要：先缓存答案，再切换状态，保证摘要首帧即为正确内容
+    localQuestionnaireAnswers.value = answers;
+    questionnaireSubmitted.value = true;
+
+    emit('questionnaireSubmit', buildQuestionnairePayload(raw, answers), record.value.RecordId || '');
+};
+
+/** 跳过：同样置为已提交态，摘要展示为「已澄清 0 个问题」 */
+const handleQuestionnaireSkip = () => {
+    if (isQuestionnaireSubmitted.value) return;
+    const raw = rawQuestionnaire.value;
+    if (!raw) return;
+    localQuestionnaireAnswers.value = [];
+    questionnaireSubmitted.value = true;
+    emit('questionnaireSkip', raw, record.value.RecordId || '');
+};
+
+// 切换到另一条 Record（组件复用）时重置澄清本地状态，避免状态串台
+watch(
+    () => record.value.RecordId,
+    () => {
+        questionnaireSubmitted.value = false;
+        localQuestionnaireAnswers.value = null;
+    }
+);
+
 const openReferenceDialog = (reference: ReferenceLike) => {
     activeReference.value = reference;
     referenceDialogVisible.value = true;
@@ -593,7 +813,9 @@ const referenceDialogTitle = computed(() => {
 </script>
 
 <template>
-    <!-- Widget action 类型的用户消息：独立于 TChatItem 居中显示 -->
+    <!-- Widget action 回放：无可展示文本，显示「已进行操作」占位。
+         反问澄清答案回放（questionnaire-only user record）走 shouldRenderItem=false 整条隐藏，
+         对齐 webim `_isQuestionnaireOnlyUserMsg`，避免出现空气泡与"已进行操作"误显。 -->
     <div v-if="isFromSelf && isWidgetAction" class="widget-action-row">
         <WidgetActionTag :text="i18n.actionPerformed" />
     </div>
@@ -715,6 +937,26 @@ const referenceDialogTitle = computed(() => {
                     v-if="!isFromSelf && docAttachments.length > 0 && mode === 'claw'"
                     :files="docAttachments"
                     :theme="theme"
+                />
+                <!-- 反问澄清：待澄清渲染可交互卡，已澄清/已过期渲染摘要卡。
+                     放在 useClawRender / displayText 两条渲染路径之后，
+                     使有无 tool_call 的对话都能正常展示。 -->
+                <ClassifyTag
+                    v-if="showQuestionnaireTag"
+                    :title="questionnaireData?.title"
+                    :questions="questionnaireData?.questions || []"
+                    :defaultAnswers="questionnaireDefaultAnswers"
+                    :disabled="readonly"
+                    :language="language"
+                    :i18n="chatI18n"
+                    @submit="handleQuestionnaireSubmit"
+                    @skip="handleQuestionnaireSkip"
+                />
+                <ClassifySummary
+                    v-else-if="showQuestionnaireSummary"
+                    :title="questionnaireSummaryTitle"
+                    :items="questionnaireSummaryItems"
+                    :defaultCollapsed="questionnaireAnsweredCount <= 0"
                 />
                 <OptionCard v-if="optionCards && optionCards.length" :cards="optionCards" :sendMessage="handleSendMessage" />
                 <div class="references-container"
