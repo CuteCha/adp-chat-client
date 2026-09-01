@@ -1,3 +1,37 @@
+## v0.7.0 (2026-09-01)
+
+### Feat
+
+- **client**: 定时任务（Cron Task）——完整工作流，含任务创建对话框、执行历史与会话联动
+- **client**: 渠道（Channel）接入——渠道会话管理、会话抽屉/面板、详情与设置对话框、微信/企业微信机器人配置对话框
+- **client**: 渠道扫码绑定，并切换到生产 API
+- **client**: Claw 模式——引入 `ChatMode` 机制区分 claw / standard 应用流程，及远程终端配置
+- **client**: Skills API 升级到 v2（同步更新生产 API 版本）
+- **client**: 会话删除功能及 SSE 空闲超时配置
+- **client**: 新会话乐观 UI 及侧栏加载态
+- **chat**: 反问澄清（questionnaire）——自 smart-webim 迁移：可交互的 ClassifyTag 卡片（单选/多选、「其他」自由输入、字数限制）与 ClassifySummary 折叠摘要；四态（待澄清/已澄清/已过期/只读）；提交上行 `questionnaire` Content、跳过发送纯文本「跳过」消息；仅含 questionnaire 的用户回放整条隐藏；历史答案回显与历史「跳过」识别；完整中英文 i18n
+- **chat**: 回复失败兜底展示——后端返回 `Status=failed` 且内容为空时，在错误气泡内展示 `StatusDesc`（如「回复失败」），对齐 webim 行为
+
+### Fix
+
+- **client**: 修复失败记录无可展示内容时渲染成空错误气泡（一条游离的 #ffd8d4 橙色边框线）的问题——错误态不再无条件强制渲染
+- **client**: 修复切换应用时 CronTaskPanel 列表数据错乱
+- **client**: 修复点击定时任务执行历史时会话不刷新
+- **client**: 修复渠道分享问题及渠道记录不唯一问题
+- **server**: 修复渠道与定时任务分享失败；修正独立站点接口配置
+- **client**: 防止自动账号共享同一 VisitorId
+- **client**: 修复缺失的英文 i18n 条目
+- **client**: 麦克风授权失败时补充错误日志
+- **plugin**: 修复添加工具时子工具详情不显示
+- **docs**: 修复聊天接口示例（数据库连接与流式响应）
+
+### Refactor
+
+- **client**: 导出组件 Props 类型并补充显式类型注解
+- **client**: 添加 wangEditor ESM 构建产物
+- **storage**: 上传时指定 Content-Type
+- **client**: 更新 widget 版本
+
 ## v0.6.0 (2026-07-03)
 
 ### Feat

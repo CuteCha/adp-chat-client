@@ -1,3 +1,37 @@
+## v0.7.0 (2026-09-01)
+
+### Feat
+
+- **client**: Scheduled tasks (Cron Task) — full workflow including task creation dialog, execution history and conversation linkage
+- **client**: Channel integration — channel session management, conversation drawer/panel, detail & settings dialogs, WeChat / WeCom bot configuration dialogs
+- **client**: Channel scan-code binding and switch to the production API
+- **client**: Claw mode — introduce the `ChatMode` mechanism to separate claw / standard application flows, plus remote terminal configuration
+- **client**: Skills API upgraded to v2 (production API version updated)
+- **client**: Conversation deletion and SSE idle-timeout configuration
+- **client**: Optimistic UI for new conversations and sidebar loading states
+- **chat**: Ask-user clarification (questionnaire) — ported from smart-webim: interactive ClassifyTag card (single/multi choice, "Other" free input, length limit) and ClassifySummary collapsed summary; four states (pending / clarified / expired / read-only); submit uploads a `questionnaire` Content while skip sends a plain-text "Skip" message; questionnaire-only user records are hidden entirely; history answer playback and history "Skip" recognition; full zh/en i18n
+- **chat**: Failed-reply fallback — when the backend returns `Status=failed` with an empty payload, `StatusDesc` (e.g. "回复失败") is shown inside the error bubble, aligned with webim behaviour
+
+### Fix
+
+- **client**: Empty error bubble rendered as a stray orange line (#ffd8d4 border) when a failed record had no displayable content — error state no longer forces rendering
+- **client**: CronTaskPanel list mixed up when switching applications
+- **client**: Conversation not refreshed when clicking the execution history of a scheduled task
+- **client**: Channel sharing problems; non-unique channel records
+- **server**: Fix share failure for channels and scheduled tasks; correct interface configurations for the standalone site
+- **client**: Auto accounts no longer share the same VisitorId
+- **client**: Missing English i18n entries
+- **client**: Add error logs for microphone authorization failure
+- **plugin**: Fix sub-tool detail not showing when adding a tool
+- **docs**: Fix chat API example (DB connection and streaming response)
+
+### Refactor
+
+- **client**: Export component Props types and add explicit type annotations
+- **client**: Add wangEditor ESM build artifacts
+- **storage**: Specify Content-Type on upload
+- **client**: Update widget version
+
 ## v0.6.0 (2026-07-03)
 
 ### Feat
