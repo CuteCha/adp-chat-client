@@ -39,3 +39,14 @@ class TCADPConfig(BaseSettings):
         description="VisitorId type for ADP chat requests. Supported values: CUSTOMER_ID, NAME",
         default="NAME",
     )
+
+    TC_CANARY_HEADER: str = Field(
+        description=(
+            "Global default for the X-TC-Canary header on ALL forwarded TC API requests "
+            "(e.g. 'toe-test-4130'), so switching the canary cluster only requires editing "
+            "this env var. Priority: per-action 'headers.X-TC-Canary' in action_version/*.json "
+            "> this env value > not sent. Leave empty to not send the header at all "
+            "(all static canary entries have been removed from action_version/*.json)."
+        ),
+        default="",
+    )

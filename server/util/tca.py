@@ -247,7 +247,13 @@ def tc_request_prepare(config: dict, action: str, payload: str, service: str = "
         headers["X-TC-Region"] = region
     if token:
         headers["X-TC-Token"] = token
-    # action_version 配置优先级最高，覆盖所有（包括 X-TC-Version）
+    # 全局灰度头默认值：TC_CANARY_HEADER（env 测试参数）作为全局默认注入，
+    # 便于测试环境一键切换灰度集群（如 toe-test-4070 → toe-test-4130）。
+    # 优先级：action_version/*.json 里 action 级显式配置 > env 全局默认 > 不带；
+    # 留空时完全不注入，行为与配置前一致。
+    if tagentic_config.TC_CANARY_HEADER:
+        headers['X-TC-Canary'] = tagentic_config.TC_CANARY_HEADER
+    # action_version 配置优先级最高，覆盖所有（包括 X-TC-Version 与上面的全局默认灰度头）
     for h_key, h_value in action_headers_config.items():
         headers[h_key] = h_value
     # 注入 X-TC-Language header（前端 Language header 透传）
