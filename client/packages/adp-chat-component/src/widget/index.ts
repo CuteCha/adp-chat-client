@@ -18,6 +18,7 @@ export {
   formatJsonWithHighlight,
   createMarkdownItWidgetPlugin,
   showFallbackJson,
+  peekWidgetJson,
 } from './widgetMarkdown';
 export type { WidgetRenderOptions } from './widgetMarkdown';
 

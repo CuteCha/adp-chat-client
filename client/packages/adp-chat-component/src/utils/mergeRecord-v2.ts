@@ -165,6 +165,21 @@ export function widgetContentToMarkdown(content: Content): string {
   
   // 如果成功解析为对象，注入 WidgetId 和 WidgetRunId
   if (widgetViewObj) {
+    // 兜底：解析后无 type 字段（如 View="{}" 或不完整视图结构）时跳过渲染——
+    // 否则注入 _meta 后会得到 {"_adp_widget_meta":{...}}，adp-widget renderContent
+    // 检查 i.type 为 undefined → 显示「暂无配置」占位（widget.noConfig）。
+    // 同时打印诊断信息，帮助定位对话页 SSE 推送的 widget content 数据是否完整。
+    if (!widgetViewObj.type) {
+      console.warn('[widgetContentToMarkdown] widget View 解析后无 type 字段，跳过渲染', {
+        widgetId: content.Widget.WidgetId,
+        widgetRunId: content.Widget.WidgetRunId,
+        viewRaw: content.Widget.View,
+        hasEncodedWidget: !!content.Widget.EncodedWidget,
+        hasState: !!content.Widget.State,
+        hasPayload: !!content.Widget.Payload,
+      });
+      return '';
+    }
     // 将 WidgetId 和 WidgetRunId 注入到 widget JSON 中的 _meta 字段
     // 这样 MdContent 可以从中提取这些信息
     widgetViewObj._adp_widget_meta = {

@@ -13,7 +13,7 @@
  */
 
 import { ref, watch, onMounted, onBeforeUnmount, type Ref } from 'vue';
-import { isWidgetSdkLoaded, loadWidgetSdk, hasWidgetContent, showFallbackJson } from '../widget';
+import { isWidgetSdkLoaded, loadWidgetSdk, hasWidgetContent, showFallbackJson, peekWidgetJson } from '../widget';
 
 /** Widget 事件载荷类型 */
 export interface WidgetActionPayload {
@@ -298,8 +298,20 @@ export function useWidgetInit(options: UseWidgetInitOptions) {
       const widgetEl = wrapper.querySelector('adp-widget');
       if (!widgetEl) return;
 
+      // 从模块级 Map 取 widgetJson（widgetMarkdown 生成时存入，data-widget-key 关联），
+      // 用 JS 设置 widget-json 属性——不通过 HTML 属性传递，避免：
+      //   1. DOMPurify 清洗超长 widget-json（含整段 HTML 代码可达数 KB）
+      //   2. 用户伪造 <div class="adp-widget-wrapper"> 绕过 DOMPurify sanitize
+      // 用户伪造的 wrapper 无 Map 条目 → 取不到 widgetJson → 不设置 widget-json → 不渲染恶意内容。
+      const widgetKey = widgetEl.getAttribute('data-widget-key') || widgetEl.id || '';
+      const widgetJson = widgetKey ? peekWidgetJson(widgetKey) : undefined;
+
       // 如果已经完成 Custom Element 升级（有 data-upgraded 标记），只需更新 disable 属性
       if (widgetEl.hasAttribute('data-upgraded')) {
+        // v-html 重渲染后旧元素可能丢失 widget-json，补设触发重渲染
+        if (widgetJson && widgetEl.getAttribute('widget-json') !== widgetJson) {
+          widgetEl.setAttribute('widget-json', widgetJson);
+        }
         updateWidgetDisable(widgetEl, isDisabled);
         bindRenderedListener(widgetEl);
         return;
@@ -313,6 +325,10 @@ export function useWidgetInit(options: UseWidgetInitOptions) {
           if (attr.name === 'data-upgraded') return;
           newWidget.setAttribute(attr.name, attr.value);
         });
+        // JS 设置 widget-json（不经过 HTML 属性 / DOMPurify）
+        if (widgetJson) {
+          newWidget.setAttribute('widget-json', widgetJson);
+        }
 
         updateWidgetDisable(newWidget, isDisabled);
         parent.replaceChild(newWidget, widgetEl);
@@ -336,6 +352,9 @@ export function useWidgetInit(options: UseWidgetInitOptions) {
       }
 
       // fallback: 直接标记并更新 disable
+      if (widgetJson && widgetEl.getAttribute('widget-json') !== widgetJson) {
+        widgetEl.setAttribute('widget-json', widgetJson);
+      }
       updateWidgetDisable(widgetEl, isDisabled);
       bindRenderedListener(widgetEl);
       widgetEl.setAttribute('data-upgraded', 'true');

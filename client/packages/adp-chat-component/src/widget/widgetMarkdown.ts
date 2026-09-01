@@ -76,6 +76,22 @@ function simpleHash(str: string): string {
 }
 
 /**
+ * widget-json 内容存储：elementId → widgetJson 字符串。
+ *
+ * 安全设计：widget-json 不通过 HTML 属性传递（避免 DOMPurify 清洗超长属性、
+ * 避免用户伪造 wrapper 绕过 sanitize）。fence 渲染时把 widgetJson 存入此 Map，
+ * 生成的 <adp-widget> 只带 data-widget-key（data- 属性 DOMPurify 保留），
+ * useWidgetInit 在 DOM 升级时按 key 从 Map 取 widgetJson，用 JS 设置 widget-json 属性。
+ * 用户伪造的 wrapper 没有 Map 条目 → 取不到 → 不渲染，杜绝 XSS。
+ */
+const widgetJsonStore = new Map<string, string>();
+
+/** 读取指定 key 的 widgetJson（只读不删，支持 v-html 重渲染时重新取值设置） */
+export function peekWidgetJson(key: string): string | undefined {
+  return widgetJsonStore.get(key);
+}
+
+/**
  * 自定义 markdown-it 插件：处理 adp-widget 代码块
  * 将 ```adp-widget 代码块渲染为 <adp-widget> 组件
  */
@@ -114,11 +130,17 @@ export function createMarkdownItWidgetPlugin(options: WidgetRenderOptions) {
         // 这样 computed 重新计算时生成相同的 HTML，减少不必要的 DOM 重建
         const elementId = `widget-${simpleHash(widgetJson)}-${idx}`;
 
-        return `<div class="adp-widget-wrapper" data-widget-id="${actualWidgetId}" data-widget-run-id="${actualWidgetRunId}" data-record-id="${options.recordId || ''}" data-element-id="${elementId}">
+        // widgetJson 存入模块级 Map，由 useWidgetInit 消费（不放入 HTML 属性）。
+        // 同一 elementId 覆盖旧值（computed 重算时内容相同 → key 相同 → 无副作用）。
+        widgetJsonStore.set(elementId, widgetJson);
+
+        // 生成的 HTML 中：data-widget-key 关联 Map；widgetId/runId/recordId 用 escapeHtmlAttr 转义防属性注入。
+        // widget-json 属性不在这里设置（由 useWidgetInit JS 设置），避免 DOMPurify 清洗超长值。
+        return `<div class="adp-widget-wrapper" data-widget-id="${escapeHtmlAttr(actualWidgetId)}" data-widget-run-id="${escapeHtmlAttr(actualWidgetRunId)}" data-record-id="${escapeHtmlAttr(options.recordId || '')}" data-element-id="${escapeHtmlAttr(elementId)}">
         <adp-widget 
-          id="${elementId}"
-          locale="${options.locale}"
-          widget-json="${escapeHtmlAttr(widgetJson)}"
+          id="${escapeHtmlAttr(elementId)}"
+          data-widget-key="${escapeHtmlAttr(elementId)}"
+          locale="${escapeHtmlAttr(options.locale)}"
         ></adp-widget>
       </div>`;
       }

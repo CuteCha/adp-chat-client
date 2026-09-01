@@ -435,6 +435,10 @@ const renderedMarkdown = computed(() => {
   }
 
   const html = mdIt.render(insertReference(preprocessed, props.quoteInfos));
+
+  // widget-json 不通过 HTML 属性传递（由 useWidgetInit 从模块级 Map 取值 JS 设置），
+  // DOMPurify 正常清洗 HTML 即可——adp-widget 元素在 ALLOWED_TAGS 保留，
+  // data-widget-key（data- 前缀）保留，用户伪造的 <script> 等被清洗。
   const sanitized = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       'p', 'br', 'strong', 'em', 'b', 'i', 'u', 's', 'del',
@@ -453,12 +457,17 @@ const renderedMarkdown = computed(() => {
       'controls', 'autoplay', 'preload', 'type', 'muted', 'loop', 'poster',
       'style', 'xmlns', 'width', 'height', 'viewBox', 'd', 'fill',
       'stroke', 'stroke-width', 'transform', 'x', 'y', 'x1', 'x2', 'y1', 'y2',
-      'locale', 'disable', 'widget-json', 'data-widget-json', 'data-widget-id',
-      'data-widget-run-id', 'data-record-id'
+      'locale', 'disable', 'data-widget-key', 'data-widget-id',
+      'data-widget-run-id', 'data-record-id', 'data-element-id'
     ],
     ALLOW_DATA_ATTR: true,
     ADD_TAGS: ['adp-widget'],
-    ADD_ATTR: ['locale', 'disable', 'widget-json', 'data-widget-json', 'data-widget-id', 'data-widget-run-id', 'data-record-id', 'data-src'],
+    ADD_ATTR: ['locale', 'disable', 'data-widget-key', 'data-widget-id', 'data-widget-run-id', 'data-record-id', 'data-element-id', 'data-src'],
+    CUSTOM_ELEMENT_HANDLING: {
+      tagNameCheck: /^adp-/,
+      attributeNameCheck: /^[\w-]+$/,
+      allowCustomizedBuiltInElements: true,
+    },
   });
 
   // 回填占位符为 chip HTML（chip 元素已在 ALLOWED_TAGS/ALLOW_DATA_ATTR 范围内）
