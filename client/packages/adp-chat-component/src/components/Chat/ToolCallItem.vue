@@ -124,6 +124,16 @@ const showCodeBlock = computed(() => {
 });
 
 /**
+ * 是否使用「调用工具 + 输出结果」两段式展开盒。
+ * 对齐 webim 视觉 V2 ToolSkills（ToolMessageBox）：未注册的通用工具（如 askquestion）
+ * 展开为 [调用工具] 段（msg.Title 调用参数）+ [输出结果] 段（输出文本），
+ * 与 webim 的展示结构保持一致；execute（bash）等注册工具保持纯代码块。
+ */
+const showTwoSections = computed(() => {
+    return toolCategory.value === 'default' && !!operationTitle.value && hasContent.value;
+});
+
+/**
  * 是否可以展开（搜索/fetch 结果或通用工具内容）
  * execute/default 使用代码块展开，search/fetch 使用文本展开
  */
@@ -139,8 +149,21 @@ function toggleExpand() {
     }
 }
 
-/** 复制内容：优先复制内容文本，其次标题 */
+/**
+ * 复制内容：
+ * - default 类（未注册工具，如 askquestion）对齐 webim V2 整盒复制：
+ *   [调用工具] 段（Title）+ [输出结果] 段（输出文本）；
+ * - 其余保持原行为：优先输出文本，其次标题。
+ */
 const copyContent = computed(() => {
+    if (showTwoSections.value) {
+        const parts: string[] = [];
+        const call = operationTitle.value;
+        const output = allText.value;
+        if (call) parts.push(`[${i18n.value.toolCallSectionLabel}]\n${call}`);
+        if (output) parts.push(`[${i18n.value.toolOutputSectionLabel}]\n${output}`);
+        return parts.join('\n\n');
+    }
     return allText.value || operationTitle.value || operationLabel.value || toolName.value || '';
 });
 
@@ -258,7 +281,9 @@ function detectLanguage(): string {
                 <!-- 操作文本 -->
                 <span class="tool-call-item__text">
                     <span v-if="operationLabel" class="tool-call-item__label">{{ operationLabel }}</span>
-                    <span v-if="operationTitle" class="tool-call-item__title">{{ operationTitle }}</span>
+                    <!-- 两段式展开盒场景（未注册通用工具，如 askquestion）：
+                         调用参数挪入展开盒 [调用工具] 段展示，标题栏不再重复，对齐 webim V2 ToolSkills -->
+                    <span v-if="operationTitle && !showTwoSections" class="tool-call-item__title">{{ operationTitle }}</span>
                 </span>
             </div>
             <div class="tool-call-item__header-right">
@@ -305,8 +330,30 @@ function detectLanguage(): string {
         <!-- 展开内容区域 -->
         <transition name="tool-expand">
             <div v-if="isExpanded && hasContent" class="tool-call-item__content">
-                <!-- execute / default 类型：代码块展示（带语法高亮） -->
-                <template v-if="showCodeBlock">
+                <!-- 未注册通用工具（如 askquestion）：两段式展开盒，
+                     对齐 webim 视觉 V2 ToolSkills（ToolMessageBox）：
+                     [调用工具] 段 = msg.Title 调用参数；[输出结果] 段 = 输出文本 -->
+                <template v-if="showTwoSections">
+                    <div class="tool-call-item__section">
+                        <div class="tool-call-item__section-label">[{{ i18n.toolCallSectionLabel }}]</div>
+                        <div class="tool-call-item__section-body">{{ operationTitle }}</div>
+                    </div>
+                    <div class="tool-call-item__section">
+                        <div class="tool-call-item__section-label">[{{ i18n.toolOutputSectionLabel }}]</div>
+                        <div class="tool-call-item__code-wrapper">
+                            <div class="tool-call-item__code-area">
+                                <MdContent
+                                    :content="codeBlockContent"
+                                    role="assistant"
+                                    :theme="theme"
+                                    :language="language"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <!-- execute 类型：代码块展示（带语法高亮） -->
+                <template v-else-if="showCodeBlock">
                     <div class="tool-call-item__code-wrapper">
                         <div class="tool-call-item__code-area">
                             <MdContent
@@ -513,6 +560,31 @@ function detectLanguage(): string {
 .tool-call-item__content {
     border-top: 1px solid var(--td-component-border, #e7e7e7);
     overflow: hidden;
+}
+
+/* ── 两段式展开盒（调用工具 / 输出结果，对齐 webim ToolMessageBox V2）── */
+.tool-call-item__section {
+    margin-bottom: var(--td-size-3);
+}
+
+.tool-call-item__section:last-child {
+    margin-bottom: 0;
+}
+
+.tool-call-item__section-label {
+    font-size: var(--td-font-size-link-small, 12px);
+    line-height: 18px;
+    color: var(--td-text-color-placeholder);
+    margin-bottom: var(--td-size-1);
+}
+
+.tool-call-item__section-body {
+    font-family: Monaco, 'Menlo', 'Consolas', monospace;
+    font-size: var(--td-font-size-link-small, 12px);
+    line-height: 18px;
+    color: var(--td-text-color-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* ── 代码展示区域 ── */

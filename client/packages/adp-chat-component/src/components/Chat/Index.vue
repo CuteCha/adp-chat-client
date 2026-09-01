@@ -179,6 +179,10 @@ import type { Record } from '../../model/chat-v2'
 import type { Questionnaire } from '../../model/chat-v2'
 import type { NormalizedSkill, AgentSkillInfo } from '../../model/skills'
 import { normalizeSkill } from '../../composables/useSkills'
+import {
+    hasSubsequentUserRecord as hasSubsequentUserRecordInList,
+    isHistoryQuestionnaireSkipped as isHistoryQuestionnaireSkippedInList,
+} from '../../utils/questionnaire'
 import { useAgentStore } from '../../composables/useAgentStore'
 
 import { ScoreValue } from '../../model/chat-v2'
@@ -890,48 +894,19 @@ const onWidgetEvent = (event: CustomEvent, widgetRunId: string, widgetId: string
  * @param index 当前 Record 在 chatList 中的下标
  */
 const hasSubsequentUserRecord = (index: number): boolean => {
-    const list = chatList.value;
-    for (let i = index + 1; i < list.length; i++) {
-        if (list[i]?.Role === 'user') return true;
-    }
-    return false;
+    return hasSubsequentUserRecordInList(chatList.value, index);
 };
 
 /**
  * 判断当前 assistant Record 之后的**第一条**用户 Record 是否是主动"跳过"（纯文本"跳过"）。
  *
- * 对齐 webim `ReplyRenderer._isQuestionnaireSkippedInHistory`：
- * 用户点击"跳过"后我们上行的是纯文本消息（对齐 webim `assist-side.onQuestionnaireSkip`），
- * 页面刷新后仅凭 `hasSubsequentUserRecord`（=true）只能得到「已过期」语义。这里进一步
- * 识别"跳过"文本，让 ChatItem 直接把它当作"已提交"处理，与 webim 行为完全一致。
- *
- * 注意：只判断**紧邻的下一条 user record**——若中间已经又开始了别的对话，就不算跳过历史。
+ * 实现抽至 utils/questionnaire.ts（与 ShareChat 分享落地页共用），
+ * 语义见 `isHistoryQuestionnaireSkippedInList`。
  *
  * @param index 当前 Record 在 chatList 中的下标
  */
 const isHistoryQuestionnaireSkipped = (index: number): boolean => {
-    const list = chatList.value;
-    const skipText = (i18n.value.clarifySkip || '跳过').trim();
-    for (let i = index + 1; i < list.length; i++) {
-        const next = list[i];
-        if (next?.Role !== 'user') continue;
-        // 找到之后的第一条 user record，判断其是否为纯文本"跳过"
-        const messages = next.Messages ?? [];
-        const primary = messages.find(m => m.Type === 'question') ?? messages[0];
-        const contents = primary?.Contents ?? [];
-        if (!contents.length) return false;
-        // 只允许 text 类型且文本为"跳过"；其它 content 类型直接判否
-        for (const c of contents) {
-            if (c.Type === 'text') {
-                if ((c.Text ?? '').trim() === skipText) return true;
-                return false;
-            }
-            // 非 text（file/widget/questionnaire 等）不视为跳过
-            return false;
-        }
-        return false;
-    }
-    return false;
+    return isHistoryQuestionnaireSkippedInList(chatList.value, index, i18n.value.clarifySkip || '跳过');
 };
 
 /** 反问澄清提交：向上抛出可直接发送的 questionnaire 内容体 */

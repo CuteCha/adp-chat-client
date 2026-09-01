@@ -13,21 +13,31 @@
         :isStreamLoad="isStreamLoad" 
         :showActions="false"
         :theme="theme"
+        :language="language"
+        :chat-i18n="mergedChatI18n"
+        :readonly="true"
+        :hasSubsequentUserRecord="hasSubsequentUserRecord(index)"
+        :historyQuestionnaireSkipped="isHistoryQuestionnaireSkipped(index)"
       />
     </TChat>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch, toRef } from 'vue';
+import { onMounted, ref, watch, toRef, computed } from 'vue';
 import { Chat as TChat } from '@tdesign-vue-next/chat';
 import ChatItem from './Chat/ChatItem.vue';
 import { fetchConversationDetail, fetchReferenceDetails } from '../service/api';
 import type { ApiConfig } from '../service/api';
 import { useApiConfig } from '../composables';
 import type { Record, Reference } from '../model/chat-v2';
-import type { ThemeType } from '../model/type';
+import type { ThemeType, ChatI18n } from '../model/type';
+import { defaultChatI18n, defaultChatI18nEn } from '../model/type';
 import { hydrateType2References } from '../utils/reference';
+import {
+    hasSubsequentUserRecord as hasSubsequentUserRecordInList,
+    isHistoryQuestionnaireSkipped as isHistoryQuestionnaireSkippedInList,
+} from '../utils/questionnaire';
 
 /**
  * ShareChat 组件 Props
@@ -37,6 +47,10 @@ interface Props {
   shareId: string
   /** 主题 */
   theme?: ThemeType
+  /** 当前语言标识（用于 ChatItem 的 i18n 与「跳过」文本判定） */
+  language?: string
+  /** 澄清相关 i18n 文案覆盖（默认走中英内置值） */
+  chatI18n?: ChatI18n
   /** API 配置 - 如果传入则使用 HTTP 请求获取数据 */
   apiConfig?: ApiConfig
   /** 加载完成回调 */
@@ -47,6 +61,8 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   theme: 'light',
+  language: 'zh-CN',
+  chatI18n: () => ({}),
   apiConfig: () => ({}),
 })
 
@@ -76,6 +92,32 @@ const loading = ref(false);
 const isStreamLoad = ref(false);
 const referenceDetailCache = new Map<string, Reference>();
 const referenceDetailPendingKeys = new Set<string>();
+
+/** 澄清 i18n：按语言选默认值，再合并外部覆盖（与 ChatItem 内部 clarifyI18n 一致） */
+const mergedChatI18n = computed<ChatI18n>(() => {
+    const defaults = props.language?.startsWith('en') ? defaultChatI18nEn : defaultChatI18n;
+    return { ...defaults, ...props.chatI18n };
+});
+
+/**
+ * 反问澄清「已过期」判定：当前 assistant Record 之后是否已存在用户消息。
+ * 分享的快照对话里，未提交就继续的问卷要折叠为「已澄清 0 个问题」摘要态。
+ */
+const hasSubsequentUserRecord = (index: number): boolean => {
+    return hasSubsequentUserRecordInList(chatList.value, index);
+};
+
+/**
+ * 历史「跳过」识别：当前 assistant Record 之后紧邻的第一条用户消息是否为
+ * 纯文本「跳过」（i18n 文案），让问卷展示为已提交摘要而非过期态。
+ */
+const isHistoryQuestionnaireSkipped = (index: number): boolean => {
+    return isHistoryQuestionnaireSkippedInList(
+        chatList.value,
+        index,
+        mergedChatI18n.value.clarifySkip || '跳过'
+    );
+};
 
 const hydrateReferences = async (records: Record[], shareId: string) => {
   if (records.length === 0) {

@@ -106,6 +106,10 @@ export interface ChatI18n {
   copy?: string
   /** 查看按钮文本 */
   view?: string
+  /** 通用工具展开盒「调用工具」段标签（对齐 webim ToolMessageBox V2） */
+  toolCallSectionLabel?: string
+  /** 通用工具展开盒「输出结果」段标签 */
+  toolOutputSectionLabel?: string
   shareFailed?: string
   loadMoreFailed?: string
   rateFailed?: string
@@ -355,6 +359,8 @@ export const defaultChatI18n: Required<ChatI18n> = {
   copyFailed: '复制失败',
   copy: '复制',
   view: '查看',
+  toolCallSectionLabel: '调用工具',
+  toolOutputSectionLabel: '输出结果',
   shareFailed: '分享失败',
   loadMoreFailed: '加载更多失败',
   rateFailed: '评分失败',
@@ -501,6 +507,8 @@ export const defaultChatI18nEn: Required<ChatI18n> = {
   copyFailed: 'Copy Failed',
   copy: 'Copy',
   view: 'View',
+  toolCallSectionLabel: 'Call Tool',
+  toolOutputSectionLabel: 'Output',
   shareFailed: 'Share Failed',
   loadMoreFailed: 'Load More Failed',
   rateFailed: 'Rate Failed',

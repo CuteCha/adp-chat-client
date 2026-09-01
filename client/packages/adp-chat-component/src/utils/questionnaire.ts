@@ -34,6 +34,67 @@ export const QUESTIONNAIRE_CONTENT_TYPE = 'questionnaire';
 export const OTHER_INPUT_MAX_LENGTH = 1000;
 
 /**
+ * 判断指定下标之后是否还存在用户 Record（反问澄清「已过期」判定用）。
+ *
+ * 用户没有提交/跳过澄清就继续发起了新一轮对话时，澄清卡应折叠为
+ * 「已澄清 0 个问题」且不再允许提交。
+ *
+ * @param list 完整的 Record 列表
+ * @param index 当前 Record 在列表中的下标
+ */
+export function hasSubsequentUserRecord(
+    list: Array<{ Role?: string }>,
+    index: number
+): boolean {
+    for (let i = index + 1; i < list.length; i++) {
+        if (list[i]?.Role === 'user') return true;
+    }
+    return false;
+}
+
+/**
+ * 判断当前 assistant Record 之后的**第一条**用户 Record 是否是主动"跳过"（纯文本跳过文案）。
+ *
+ * 对齐 webim `ReplyRenderer._isQuestionnaireSkippedInHistory`：
+ * 用户点击"跳过"后上行的是纯文本消息，页面刷新/分享落地页仅凭
+ * hasSubsequentUserRecord（=true）只能得到「已过期」语义；这里进一步识别
+ * "跳过"文本，让 ChatItem 直接把它当作"已提交"处理。
+ *
+ * 注意：只判断**紧邻的下一条 user record**——若中间已经又开始了别的对话，就不算跳过历史。
+ *
+ * @param list     完整的 Record 列表
+ * @param index    当前 Record 在列表中的下标
+ * @param skipText 当前语言下的"跳过"文案（如「跳过」/「Skip」）
+ */
+export function isHistoryQuestionnaireSkipped(
+    list: Array<{ Role?: string; Messages?: Array<{ Type?: string; Contents?: Content[] }> }>,
+    index: number,
+    skipText: string
+): boolean {
+    const text = (skipText || '跳过').trim();
+    for (let i = index + 1; i < list.length; i++) {
+        const next = list[i];
+        if (next?.Role !== 'user') continue;
+        // 找到之后的第一条 user record，判断其是否为纯文本"跳过"
+        const messages = next.Messages ?? [];
+        const primary = messages.find(m => m.Type === 'question') ?? messages[0];
+        const contents = primary?.Contents ?? [];
+        if (!contents.length) return false;
+        // 只允许 text 类型且文本为"跳过"；其它 content 类型直接判否
+        for (const c of contents) {
+            if (c.Type === 'text') {
+                if ((c.Text ?? '').trim() === text) return true;
+                return false;
+            }
+            // 非 text（file/widget/questionnaire 等）不视为跳过
+            return false;
+        }
+        return false;
+    }
+    return false;
+}
+
+/**
  * 从消息的 contents 中提取澄清内容体。
  * @param contents 消息的内容数组
  * @returns 澄清内容体；不存在时返回 null

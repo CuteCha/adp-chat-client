@@ -404,13 +404,17 @@ const isFinal = computed(() => {
 
 /**
  * assistant 消息是否有可展示内容。
- * 判定维度：正文文本 / 工具调用分组 / 图片·文件附件 / 深度思考 / 引用 / 选项卡。
+ * 判定维度：正文文本 / 工具调用分组 / 图片·文件附件 / 深度思考 / 引用 / 选项卡 / 反问澄清。
  * 用户消息不受此限制（恒为 true）。
  *
  * 注意：**不要**因为 `isError` 就无脑返回 true。错误态只是给气泡换个红边框/红字色的
  * 视觉皮肤（.chat-item--error），需要内部真实有可展示内容（如错误文案 / renderItems）
  * 才有意义；否则会渲染成一个只有 1px `#ffd8d4` 红边框、内部空空的盒子——即用户看到的
  * "一条莫名其妙的橙色线条"。
+ *
+ * 反问澄清（questionnaire）计入可展示内容（对齐 webim messageHasVisibleOutput）：
+ * AI 反问那轮可能没有正文文本，questionnaire 卡片（ClassifyTag/ClassifySummary）是
+ * 唯一内容——分享落地页等场景若漏掉此维度，整条气泡会被 shouldRenderItem 隐藏。
  */
 const hasAssistantContent = computed(() => {
     if (isFromSelf.value) return true;
@@ -420,7 +424,8 @@ const hasAssistantContent = computed(() => {
         || imageAttachments.value.length > 0
         || docAttachments.value.length > 0
         || optionCards.value.length > 0
-        || references.value.length > 0;
+        || references.value.length > 0
+        || !!questionnaireData.value;
 });
 
 /**
