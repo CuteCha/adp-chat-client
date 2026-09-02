@@ -4,13 +4,11 @@
 
 - **client**: 定时任务（Cron Task）——完整工作流，含任务创建对话框、执行历史与会话联动
 - **client**: 渠道（Channel）接入——渠道会话管理、会话抽屉/面板、详情与设置对话框、微信/企业微信机器人配置对话框
-- **client**: 渠道扫码绑定，并切换到生产 API
-- **client**: Claw 模式——引入 `ChatMode` 机制区分 claw / standard 应用流程，及远程终端配置
-- **client**: Skills API 升级到 v2（同步更新生产 API 版本）
+- **client**: 渠道支持扫码绑定
+- **client**: Skills 等API 升级到 v2
 - **client**: 会话删除功能及 SSE 空闲超时配置
-- **client**: 新会话乐观 UI 及侧栏加载态
-- **chat**: 反问澄清（questionnaire）——自 smart-webim 迁移：可交互的 ClassifyTag 卡片（单选/多选、「其他」自由输入、字数限制）与 ClassifySummary 折叠摘要；四态（待澄清/已澄清/已过期/只读）；提交上行 `questionnaire` Content、跳过发送纯文本「跳过」消息；仅含 questionnaire 的用户回放整条隐藏；历史答案回显与历史「跳过」识别；完整中英文 i18n
-- **chat**: 回复失败兜底展示——后端返回 `Status=failed` 且内容为空时，在错误气泡内展示 `StatusDesc`（如「回复失败」），对齐 webim 行为
+- **client**: 优化新会话 UI 及侧栏加载态
+- **chat**: 对话支持反问澄清（askquestion）
 
 ### Fix
 
@@ -24,6 +22,9 @@
 - **client**: 麦克风授权失败时补充错误日志
 - **plugin**: 修复添加工具时子工具详情不显示
 - **docs**: 修复聊天接口示例（数据库连接与流式响应）
+- **chat**: 修复widget-json 属性过长widget 显示「暂无配置」
+- **chat**: tool_call 展开盒对齐两段式（[调用工具] 入参 + [输出结果]），标题栏去重 + 两段式复制
+- **server**: 分享创建改用 V2 消息接口（v1 GetMsgRecord 不含 questionnaire/tool_call 内容），并按 RecordId 聚合 + MessageId 去重，避免分页边界拆分同一 record 导致重复
 
 ### Refactor
 
