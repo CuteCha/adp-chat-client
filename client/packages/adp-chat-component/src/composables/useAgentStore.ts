@@ -82,7 +82,13 @@ export interface FetchAgentIdOptions {
     /** 应用 ID（作为存储 key，也透传给 /adp 代理） */
     applicationId: string;
 
-    /** 是否强制刷新（默认 false，已绑定过 agentId 时不再重复请求；强制时也会跳过本地 DB 查询） */
+    /**
+     * 是否强制刷新（默认 false）。
+     * - false：优先复用内存缓存 / 本地后端 DB 中已绑定的 agentId，避免重复 CopyAgentFromApp。
+     * - true：跳过内存缓存与本地 DB 查询，强制重新调用 CopyAgentFromApp 生成新的 agentId，
+     *         并将结果覆盖写回内存缓存与本地后端 DB（供下次 / 多端复用）。
+     *         注：并发的 force 请求仍会通过 inflight 去重，避免用户连点导致重复 copy。
+     */
     force?: boolean;
 }
 
@@ -190,14 +196,14 @@ export function useAgentStore() {
             return '';
         }
 
-        // 命中前端内存缓存：同一 applicationId 已经绑定过 agentId 且非强制刷新则直接复用
+        // 命中前端内存缓存：仅在非强制刷新时复用。force=true 时跳过，走重新 CopyAgentFromApp。
         if (!force && agentIdMap.value[applicationId]) {
             return agentIdMap.value[applicationId];
         }
 
-        // 同一 applicationId 已有 inflight 请求，直接复用，避免并发重复调用
+        // 已有 inflight 请求则复用，避免并发重复调用（含 force 之间的去重，防止用户连点重复 copy）。
         const inflight = inflightMap.get(applicationId);
-        if (!force && inflight) {
+        if (inflight) {
             return inflight;
         }
 
@@ -205,7 +211,8 @@ export function useAgentStore() {
             try {
                 loadingMap.value = { ...loadingMap.value, [applicationId]: true };
 
-                // 1) 优先查本地后端 DB（非强制刷新时），命中则直接返回，不再走外部 ADP 接口
+                // 1) 非强制刷新时优先查本地后端 DB，命中则直接返回，不再走外部 ADP 接口。
+                //    force=true 时跳过此步，强制走下面的 CopyAgentFromApp 重新生成。
                 if (!force) {
                     try {
                         const localResp = await getAgentConfig(
@@ -244,7 +251,7 @@ export function useAgentStore() {
                     [applicationId]: newAgentId,
                 };
 
-                // 4) 回写本地 DB，供下次/多端复用（失败不阻断主流程）
+                // 4) 回写本地 DB，供下次/多端复用（force 时即覆盖旧绑定；失败不阻断主流程）
                 if (newAgentId) {
                     try {
                         await saveAgentConfig(

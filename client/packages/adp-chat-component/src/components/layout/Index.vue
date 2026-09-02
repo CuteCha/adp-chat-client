@@ -232,6 +232,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const {
     getAgentIdByAppId,
+    fetchAndSetAgentId,
     watchApplicationId,
     agentIdMap,
     setApplicationModes,
@@ -1648,6 +1649,12 @@ const handleCreateConversation = () => {
     if (useApiMode.value) {
         internalCurrentConversation.value = undefined;
         currentConversationStateKey.value = '';
+    }
+    // 新建会话时强制刷新当前应用的 agentId：跳过内存缓存与本地 DB，
+    // 重新 CopyAgentFromApp 生成新的 agentId 并覆盖写回（仅 claw 应用生效，内部已做门槛判断）。
+    const appId = currentApplicationId.value;
+    if (appId) {
+        fetchAndSetAgentId({ applicationId: appId, force: true });
     }
     // 创建新会话时关闭文件预览面板 & 定时任务面板
     closeFilePreview();
