@@ -3,18 +3,22 @@ node_modules
 __pycache__
 .ipynb_checkpoints
 .DS_Store
+.playwright-cli
+.idea
 .venv
 .vscode
 .env
+.env.*
 dist
-Makefile.local
-docker.config
-research
 build
 cache
-deploy
 .codebuddy/
 .vercel
-server/static/
-server/logs/
 yarn.lock
+
+# 日志与本地产物
+*.log
+*.pid
+
+# 重构前的原始代码备份，仅本地对照，不入库
+a-debug/

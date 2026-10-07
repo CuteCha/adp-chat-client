@@ -1,0 +1,54 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: #2b3240;
+  background: #fff;
+}
+
+/* markdown-body：与线上 MdContent 观感对齐的最小样式集 */
+.markdown-body {
+  word-break: break-word;
+  line-height: 1.7;
+}
+.markdown-body p {
+  margin: 6px 0;
+}
+.markdown-body pre {
+  background: #f6f8fa;
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.markdown-body code {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.markdown-body p > code {
+  background: #f2f4f7;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.markdown-body table {
+  border-collapse: collapse;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #e2e6ed;
+  padding: 6px 10px;
+}
+.markdown-body blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid #e2e6ed;
+  color: #6b7280;
+}
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 22px;
+  margin: 6px 0;
+}
