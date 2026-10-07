@@ -50,7 +50,7 @@ interface ConvState {
 }
 
 /** 会话 Id → 状态；新任务在会话 Id 落位前用 pending-N 作为 key */
-const states = reactive(new Map<string, ConvState>())
+const states = reactive<Record<string, ConvState>>({})
 
 let pendingSeq = 0
 
@@ -58,13 +58,19 @@ function createState(): ConvState {
   return { records: [], questionnaire: {}, controller: null, streaming: false }
 }
 
+/** 写入路径：不存在则创建。
+ *  注意必须返回容器里存的那份（reactive 代理），
+ *  否则拿到的是原始对象，改 records 不会触发渲染。 */
 function getState(key: string): ConvState {
-  let s = states.get(key)
-  if (!s) {
-    s = createState()
-    states.set(key, s)
-  }
-  return s
+  const existing = states[key]
+  if (existing) return existing
+  states[key] = createState()
+  return states[key]
+}
+
+/** 只读路径（computed 里用，避免读取时产生写入副作用） */
+function peekState(key: string): ConvState | undefined {
+  return states[key]
 }
 
 /** pending-N → ''，真实会话 → 原样 */
@@ -86,17 +92,20 @@ const conversationVersion = ref(0)
 // ---------------------------------------------------------------------------
 
 const records = computed<RecordV2[]>(() =>
-  shareRecords.value ? shareRecords.value : getState(activeKey.value).records,
+  shareRecords.value ? shareRecords.value : peekState(activeKey.value)?.records ?? [],
 )
 /** 当前查看会话的真实会话 Id；新任务未落位 / 分享视图为 '' */
 const conversationId = computed(() => (shareRecords.value ? '' : realId(activeKey.value)))
 /** 当前查看会话是否在流式输出 */
-const streaming = computed(() => !shareRecords.value && getState(activeKey.value).streaming)
+const streaming = computed(() => !shareRecords.value && !!peekState(activeKey.value)?.streaming)
 /** 所有正在流式的会话 Id（含后台）→ 侧栏转圈 */
 const streamingIds = computed(() =>
-  [...states.entries()].filter(([, s]) => s.streaming).map(([k]) => realId(k)).filter(Boolean),
+  Object.entries(states)
+    .filter(([, s]) => s.streaming)
+    .map(([k]) => realId(k))
+    .filter(Boolean),
 )
-const questionnaireState = computed(() => getState(activeKey.value).questionnaire)
+const questionnaireState = computed(() => peekState(activeKey.value)?.questionnaire ?? {})
 
 /** 会话 Id 落位回调（新任务的首条消息触发），参数：(真实会话Id, 发起时的 key) */
 const newConversationHandlers: Array<(id: string, key: string) => void> = []
@@ -124,8 +133,8 @@ function handleEvent(event: SseEvent, ctx: StreamCtx) {
       const newId = event.Payload.Id
       // 新任务：把 pending 状态整体搬到真实会话 Id 下（流继续在后台跑）
       if (event.Payload.IsNewConversation && key !== newId) {
-        states.set(newId, state)
-        states.delete(key)
+        states[newId] = state
+        delete states[key]
         if (activeKey.value === key) activeKey.value = newId
         ctx.key = newId // 后续事件跟随真实会话 Id
         newConversationHandlers.forEach((fn) => fn(newId, key))
