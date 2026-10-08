@@ -20,6 +20,7 @@ import type {
   SseEvent,
 } from '../sse/types'
 import { applySseEventToRecord } from '../utils/mergeRecord'
+import { pickQuestionnaireContent } from '../utils/questionnaire'
 import { fetchSSE } from '../sse/fetchSSE'
 import { sendMessage, fetchMessages } from '../api'
 import { buildQuestionnairePayload } from '../utils/questionnaire'
@@ -47,6 +48,8 @@ interface ConvState {
   questionnaire: Record<string, { submitted: boolean; answers: QuestionnaireAnswer[] | null }>
   controller: AbortController | null
   streaming: boolean
+  /** 流已结束但末条回答带着未回答的澄清卡 → 任务挂起等用户输入，不算完成 */
+  awaitingClarify: boolean
 }
 
 /** 会话 Id → 状态；新任务在会话 Id 落位前用 pending-N 作为 key */
@@ -55,7 +58,7 @@ const states = reactive<Record<string, ConvState>>({})
 let pendingSeq = 0
 
 function createState(): ConvState {
-  return { records: [], questionnaire: {}, controller: null, streaming: false }
+  return { records: [], questionnaire: {}, controller: null, streaming: false, awaitingClarify: false }
 }
 
 /** 写入路径：不存在则创建。
@@ -102,6 +105,13 @@ const streaming = computed(() => !shareRecords.value && !!peekState(activeKey.va
 const streamingIds = computed(() =>
   Object.entries(states)
     .filter(([, s]) => s.streaming)
+    .map(([k]) => realId(k))
+    .filter(Boolean),
+)
+/** 仍在"进行中"的会话（流式中 或 等待用户澄清）→ 侧栏转圈保持 */
+const activeIds = computed(() =>
+  Object.entries(states)
+    .filter(([, s]) => s.streaming || s.awaitingClarify)
     .map(([k]) => realId(k))
     .filter(Boolean),
 )
@@ -218,6 +228,13 @@ async function sendContents(contents: OutgoingContent[], key = activeKey.value) 
         const finalState = getState(ctx.key)
         finalState.streaming = false
         finalState.controller = null
+        // 流结束但末条回答带着未回答的澄清卡 → 任务挂起等用户输入（不算完成）
+        const last = finalState.records[finalState.records.length - 1]
+        finalState.awaitingClarify =
+          !!last &&
+          last.Role !== 'user' &&
+          (last.Messages ?? []).some((m) => !!pickQuestionnaireContent(m.Contents)) &&
+          !finalState.questionnaire[last.RecordId]?.submitted
         // 后台会话完成时也刷新侧栏（活跃时间 / 后端标题）
         conversationVersion.value++
       },
@@ -249,6 +266,7 @@ function send(text: string, files: AttachedFile[] = []) {
 async function submitQuestionnaire(raw: Questionnaire, answers: QuestionnaireAnswer[], recordId: string) {
   const key = activeKey.value
   const state = getState(key)
+  state.awaitingClarify = false
   state.questionnaire = {
     ...state.questionnaire,
     [recordId]: { submitted: true, answers },
@@ -259,6 +277,7 @@ async function submitQuestionnaire(raw: Questionnaire, answers: QuestionnaireAns
 async function skipQuestionnaire(recordId: string) {
   const key = activeKey.value
   const state = getState(key)
+  state.awaitingClarify = false
   state.questionnaire = {
     ...state.questionnaire,
     [recordId]: { submitted: true, answers: null },
@@ -309,6 +328,7 @@ export function useChat() {
     activeKey,
     streaming,
     streamingIds,
+    activeIds,
     error,
     conversationVersion,
     questionnaireState,

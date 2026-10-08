@@ -5,10 +5,12 @@ import { useChat, type AttachedFile } from './composables/useChat'
 import ConversationList from './components/ConversationList.vue'
 import RecordItem from './components/RecordItem.vue'
 import AssistantGroup, { type AssistantEntry } from './components/AssistantGroup.vue'
+import StatusLine from './components/StatusLine.vue'
 import Sender from './components/Sender.vue'
 import AgentPanel from './components/AgentPanel.vue'
 import type { Questionnaire, QuestionnaireAnswer, Record as RecordV2 } from './sse/types'
 import { isUserRecordInvisible } from './utils/record'
+import { pickQuestionnaireContent } from './utils/questionnaire'
 import {
   checkAllowed,
   createConversation,
@@ -29,7 +31,7 @@ const {
   conversationId,
   activeKey,
   streaming,
-  streamingIds,
+  activeIds,
   error,
   conversationVersion,
   questionnaireState,
@@ -253,6 +255,22 @@ const fileMode = computed<'standard' | 'claw'>(() => {
   return pattern === 'ClawAgent' ? 'claw' : 'standard'
 })
 
+/**
+ * 「任务已开始但暂无可见输出」提示：流式进行中，但还没有任何
+ * assistant 可见消息（上游检索/规划阶段可能长时间不吐内容）。
+ * 一旦出现思考/工具/正文等可见消息，即由 MessageContent 内的执行提示接管。
+ */
+const showPendingHint = computed(() => {
+  if (!streaming.value || readonly.value) return false
+  const last = displayItems.value[displayItems.value.length - 1]
+  if (!last || last.type !== 'assistant') return true
+  return last.entries.every((entry) =>
+    (entry.record.Messages ?? []).every(
+      (m) => !!pickQuestionnaireContent(m.Contents) || !(m.Contents ?? []).length,
+    ),
+  )
+})
+
 watch(conversationVersion, () => refreshConversations())
 
 // 流式期间持续贴底（text.delta 会不断更新最后一条记录）
@@ -287,7 +305,7 @@ onMounted(async () => {
         :active-id="conversationId"
         :titles="localTitles"
         :streaming="streaming"
-        :streaming-ids="streamingIds"
+        :streaming-ids="activeIds"
         :pending-title="pendingTitle"
         :active-stream-title="activePendingTitle"
         @select="onLoadHistory"
@@ -341,11 +359,15 @@ onMounted(async () => {
             :questionnaire-state="questionnaireState"
             :scores="scores"
             :readonly="readonly"
+            :running="streaming && i === displayItems.length - 1"
             @submit-questionnaire="onSubmitQuestionnaire"
             @skip-questionnaire="onSkipQuestionnaire"
             @rate="onRate"
           />
         </template>
+
+        <!-- 任务已提交、上游暂无任何可见输出：动态"开工"提示 -->
+        <StatusLine v-if="showPendingHint" class="pending-hint" />
       </div>
 
       <div v-if="!readonly && suggestions.length" class="suggestions">
@@ -467,6 +489,9 @@ onMounted(async () => {
   color: #9aa1ab;
   text-align: center;
   margin-top: 20vh;
+}
+.pending-hint {
+  margin: 4px 0 0 44px;
 }
 .suggestions {
   display: flex;

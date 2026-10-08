@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import type { Message } from '../sse/types'
 import Markdown from './Markdown.vue'
 import ReferenceTags from './ReferenceTags.vue'
+import StatusLine from './StatusLine.vue'
 
 const props = defineProps<{ message: Message; applicationId?: string }>()
 
@@ -29,6 +30,8 @@ const title = computed(() => {
   return props.message.Title || ''
 })
 const running = computed(() => props.message.Status === 'processing')
+/** 工具/思考执行中的轮播提示（折叠时显示在块下方） */
+const EXEC_PHRASES = ['正在执行…', '正在调用工具处理…', '正在等待执行结果…', '快好了，请稍候…']
 </script>
 
 <template>
@@ -42,6 +45,7 @@ const running = computed(() => props.message.Status === 'processing')
     <!-- 思考 / 工具调用：默认折叠 -->
     <div v-else class="collapse">
       <button class="collapse-head" @click="collapsed = !collapsed">
+        <span v-if="running" class="mini-spin" aria-hidden="true" />
         <span class="arrow">{{ collapsed ? '▸' : '▾' }}</span>
         <span class="name">{{ title }}</span>
         <span v-if="running" class="status">进行中…</span>
@@ -55,6 +59,8 @@ const running = computed(() => props.message.Status === 'processing')
         <ReferenceTags :references="references" :application-id="applicationId || ''" />
       </div>
     </div>
+    <!-- 执行中且折叠：块下方给"正在执行…"动态提示，避免看似无输出 -->
+    <StatusLine v-if="running && collapsed" :phrases="EXEC_PHRASES" class="running-line" />
   </div>
 </template>
 
@@ -78,6 +84,23 @@ const running = computed(() => props.message.Status === 'processing')
 }
 .arrow {
   font-size: 10px;
+}
+.mini-spin {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 2px solid #d9e2ef;
+  border-top-color: #34a853;
+  border-radius: 50%;
+  animation: mc-spin 0.9s linear infinite;
+}
+@keyframes mc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.running-line {
+  margin: 2px 0 2px 14px;
 }
 .status {
   color: #9aa1ab;

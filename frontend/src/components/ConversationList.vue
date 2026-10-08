@@ -122,8 +122,8 @@ function formatTime(ms: number): string {
   flex: 0 0 12px;
   width: 12px;
   height: 12px;
-  border: 2px solid #dbe6ff;
-  border-top-color: #2b62d9;
+  border: 2px solid #d9e2ef;
+  border-top-color: #34a853;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
