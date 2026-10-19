@@ -4,14 +4,19 @@
  *
  * 附件流程与线上一致：上传拿 URL → 非图片还要走一次实时文档解析拿 doc_id，
  * 最终以 { Type: 'file', File: { DocId, ... } } 随消息上行。
- * Skills / 工具 / 连接器 / 知识库按钮：Skills 弹出「已安装技能」快选浮层
- * （选中即把 @技能名 插入输入框，与官方 @ 技能效果一致；「管理 Skills」进管理面板），
- * 其余按钮唤起能力面板。输入框里输入 @ 同样唤起已安装技能菜单。
+ * Skills / 工具 / 连接器按钮：弹出对应种类的「已安装」快选浮层（选中即把 @名称 插入
+ * 输入框，与官方 @ 效果一致；底部「管理」进管理面板），知识库按钮直接唤起面板。
+ * 输入框里输入 @ 唤起两层菜单：一级「技能 / 工具 / 连接器」，二级是具体条目。
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { parseFile, uploadFile } from '../api'
 import type { AttachedFile } from '../composables/useChat'
-import { loadInstalledSkills, useInstalledSkills, type InstalledSkill } from '../composables/useInstalledSkills'
+import {
+  loadInstalledSkills,
+  useInstalledSkills,
+  type CapabilityKind,
+  type InstalledItem,
+} from '../composables/useInstalledSkills'
 
 export type PanelTab = 'skill' | 'tool' | 'connector' | 'knowledge'
 
@@ -28,7 +33,8 @@ const emit = defineEmits<{
   (e: 'panel', tab: PanelTab): void
 }>()
 
-const { installedSkills, loadingSkills, loadInstalledSkills: loadSkills } = useInstalledSkills()
+const { installedSkills, installedTools, installedConnectors, loadingSkills, loadInstalledSkills: loadSkills } =
+  useInstalledSkills()
 
 const text = ref('')
 const files = ref<AttachedFile[]>([])
@@ -47,18 +53,53 @@ function submit() {
 }
 
 // ---------------------------------------------------------------------------
-// @ 唤起已安装技能：光标前紧跟 @关键词 时弹出菜单，回车/点击把候选替换进去
+// @ 唤起两层菜单：一级「技能 / 工具 / 连接器」，二级是该分类下已安装的条目
+//   光标前紧跟 @关键词 时弹出，回车/点击把候选替换进去
 // ---------------------------------------------------------------------------
 
+const MENTION_GROUPS: { key: CapabilityKind; label: string }[] = [
+  { key: 'skill', label: '技能' },
+  { key: 'tool', label: '工具' },
+  { key: 'connector', label: '连接器' },
+]
+
 const mention = ref<{ start: number; query: string } | null>(null)
+/** 0 = 焦点在一级分类，1 = 焦点在二级条目 */
+const mentionLayer = ref<0 | 1>(0)
+const mentionGroup = ref<CapabilityKind>('skill')
 const mentionActive = ref(0)
-const mentionFiltered = computed(() => {
-  const q = (mention.value?.query ?? '').trim().toLowerCase()
-  if (!q) return installedSkills.value
-  return installedSkills.value.filter(
-    (s) => s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q),
+
+/** 某个分类下的已安装条目 */
+function itemsOf(kind: CapabilityKind): InstalledItem[] {
+  if (kind === 'skill') return installedSkills.value
+  if (kind === 'tool') return installedTools.value
+  return installedConnectors.value
+}
+
+function filterItems(items: InstalledItem[], q: string): InstalledItem[] {
+  if (!q) return items
+  return items.filter(
+    (i) => i.name.toLowerCase().includes(q) || i.desc.toLowerCase().includes(q),
   )
+}
+
+/** 每个分类下按当前关键词过滤后的条目 */
+const mentionGroups = computed(() =>
+  MENTION_GROUPS.map((g) => ({
+    ...g,
+    items: filterItems(itemsOf(g.key), (mention.value?.query ?? '').trim().toLowerCase()),
+  })),
+)
+
+/** 当前展开的分类：当前分类为空时回退到第一个有内容的分类 */
+const mentionCurrent = computed(() => {
+  const hit = mentionGroups.value.find((g) => g.key === mentionGroup.value)
+  if (hit && hit.items.length) return hit
+  return mentionGroups.value.find((g) => g.items.length) ?? mentionGroups.value[0]
 })
+
+/** 三个分类都没有候选时不弹菜单 */
+const mentionVisible = computed(() => !!mention.value && mentionGroups.value.some((g) => g.items.length > 0))
 
 /** 光标前是否是「@关键词」片段，是则记录片段起点并打开菜单 */
 function updateMention() {
@@ -67,12 +108,43 @@ function updateMention() {
   const pos = el.selectionStart ?? text.value.length
   const before = text.value.slice(0, pos)
   const m = before.match(/(^|\s)@([^\s@]*)$/)
-  if (m) {
-    if (!installedSkills.value.length) loadSkills(props.applicationId)
-    mention.value = { start: pos - m[2].length - 1, query: m[2] }
-    if (mentionActive.value >= mentionFiltered.value.length) mentionActive.value = 0
-  } else {
+  if (!m) {
     mention.value = null
+    return
+  }
+  if (mention.value === null) {
+    mentionLayer.value = 0
+    mentionActive.value = 0
+  }
+  mention.value = { start: pos - m[2].length - 1, query: m[2] }
+  loadSkills(props.applicationId)
+  // 当前分类没命中时自动切到第一个有内容的分类
+  if (!mentionCurrent.value || !mentionCurrent.value.items.length) {
+    const first = mentionGroups.value.find((g) => g.items.length)
+    if (first) mentionGroup.value = first.key
+  }
+  if (mentionActive.value >= (mentionCurrent.value?.items.length ?? 0)) mentionActive.value = 0
+}
+
+/** 一级：悬停 / 点击切换分类并展开二级 */
+function pickGroup(key: CapabilityKind) {
+  mentionGroup.value = key
+  mentionLayer.value = 1
+  mentionActive.value = 0
+}
+
+/** 一级上下键：跳过没有候选的分类 */
+function moveGroup(step: number) {
+  const groups = mentionGroups.value
+  const n = groups.length
+  const idx = groups.findIndex((g) => g.key === mentionGroup.value)
+  for (let i = 1; i <= n; i++) {
+    const g = groups[(idx + step * i + n * n) % n]
+    if (g.items.length) {
+      mentionGroup.value = g.key
+      mentionActive.value = 0
+      return
+    }
   }
 }
 
@@ -85,10 +157,10 @@ function setCaret(pos: number) {
   })
 }
 
-/** 选中技能：把「@关键词」替换成「@技能名 」，效果与官方 @ 技能一致 */
-function applyMention(skill: InstalledSkill) {
+/** 选中条目：把「@关键词」替换成「@名称 」，效果与官方 @ 一致 */
+function applyMention(item: InstalledItem) {
   const m = mention.value
-  const insert = `@${skill.name} `
+  const insert = `@${item.name} `
   if (m) {
     text.value = text.value.slice(0, m.start) + insert + text.value.slice(m.start + 1 + m.query.length)
     setCaret(m.start + insert.length)
@@ -100,34 +172,37 @@ function applyMention(skill: InstalledSkill) {
 }
 
 // ---------------------------------------------------------------------------
-// Skills 快选浮层：列出已安装技能，点击即指定该技能做任务
+// 快选浮层：按种类列出已安装条目，点击即指定它做任务（官方同款形态）
 // ---------------------------------------------------------------------------
 
 const pickerOpen = ref(false)
+const pickerKind = ref<CapabilityKind>('skill')
 const pickerQuery = ref('')
-const pickerFiltered = computed(() => {
-  const q = pickerQuery.value.trim().toLowerCase()
-  if (!q) return installedSkills.value
-  return installedSkills.value.filter(
-    (s) => s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q),
-  )
-})
+const pickerItems = computed(() => itemsOf(pickerKind.value))
+const pickerFiltered = computed(() =>
+  filterItems(pickerItems.value, pickerQuery.value.trim().toLowerCase()),
+)
+const pickerLabel = computed(
+  () => MENTION_GROUPS.find((g) => g.key === pickerKind.value)?.label ?? '技能',
+)
 
-function togglePicker() {
-  pickerOpen.value = !pickerOpen.value
+function togglePicker(kind: CapabilityKind) {
+  const reopen = pickerOpen.value && pickerKind.value === kind
+  pickerOpen.value = !reopen
+  pickerKind.value = kind
   pickerQuery.value = ''
   if (pickerOpen.value) loadSkills(props.applicationId)
 }
 
-/** 浮层里点技能：在光标处插入 @技能名（若正在 @ 输入则替换该片段） */
-function insertSkillMention(skill: InstalledSkill) {
+/** 浮层里点条目：在光标处插入 @名称（若正在 @ 输入则替换该片段） */
+function insertMention(item: InstalledItem) {
   mention.value = null
   pickerOpen.value = false
   const el = textarea.value
   const pos = el?.selectionStart ?? text.value.length
   const before = text.value.slice(0, pos)
   const m = before.match(/(^|\s)@([^\s@]*)$/)
-  const insert = `@${skill.name} `
+  const insert = `@${item.name} `
   if (m) {
     const start = pos - m[2].length - 1
     text.value = text.value.slice(0, start) + insert + text.value.slice(pos)
@@ -139,28 +214,54 @@ function insertSkillMention(skill: InstalledSkill) {
   }
 }
 
-function openManage() {
+function openManage(tab: PanelTab) {
   pickerOpen.value = false
-  emit('panel', 'skill')
+  emit('panel', tab)
 }
 
 function onKeydown(e: KeyboardEvent) {
-  // @ 菜单打开时，方向键 / 回车 / Tab 先用于选择技能
-  if (mention.value && mentionFiltered.value.length) {
+  // @ 菜单打开时，方向键 / 回车 / Tab 先用于在两层之间导航与选择
+  if (mentionVisible.value) {
+    const items = mentionCurrent.value?.items ?? []
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      mentionLayer.value = 0
+      return
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      if (items.length) {
+        mentionLayer.value = 1
+        mentionActive.value = 0
+      }
+      return
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      mentionActive.value = (mentionActive.value + 1) % mentionFiltered.value.length
+      if (mentionLayer.value === 0) {
+        moveGroup(1)
+      } else if (items.length) {
+        mentionActive.value = (mentionActive.value + 1) % items.length
+      }
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      mentionActive.value =
-        (mentionActive.value - 1 + mentionFiltered.value.length) % mentionFiltered.value.length
+      if (mentionLayer.value === 0) {
+        moveGroup(-1)
+      } else if (items.length) {
+        mentionActive.value = (mentionActive.value - 1 + items.length) % items.length
+      }
       return
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault()
-      applyMention(mentionFiltered.value[mentionActive.value])
+      // 焦点还在一级时，回车直接取当前分类的第一项（与官方一致）
+      if (mentionLayer.value === 0) {
+        if (items.length) applyMention(items[0])
+      } else if (items.length) {
+        applyMention(items[mentionActive.value])
+      }
       return
     }
     if (e.key === 'Escape') {
@@ -292,21 +393,37 @@ function removeFile(index: number) {
         ref="textarea"
         rows="1"
         :disabled="disabled"
-        placeholder="支持上传图片或文件进行提问，输入@唤起安装的Skills/工具/知识库"
+        placeholder="支持上传图片或文件进行提问，输入@唤起已安装的技能/工具/连接器"
         @keydown="onKeydown"
         @input="onInput"
       />
 
-      <!-- @ 唤起：已安装技能菜单 -->
-      <div v-if="mention && mentionFiltered.length" class="mention-pop">
+      <!-- @ 唤起：一级分类（独立浮层，高度由分类数决定） -->
+      <div v-if="mentionVisible" class="mention-side">
         <button
-          v-for="(s, i) in mentionFiltered"
+          v-for="g in mentionGroups"
+          :key="g.key"
+          class="mp-cat"
+          :class="{ on: mentionGroup === g.key }"
+          :disabled="!g.items.length"
+          @mouseenter="pickGroup(g.key)"
+          @mousedown.prevent="pickGroup(g.key)"
+        >
+          <span class="mp-cat-label">{{ g.label }}</span>
+          <span class="mp-arrow">›</span>
+        </button>
+      </div>
+
+      <!-- @ 唤起：二级条目（独立浮层，高度由条目数决定） -->
+      <div v-if="mentionVisible && (mentionCurrent?.items.length ?? 0) > 0" class="mention-sub">
+        <button
+          v-for="(s, i) in mentionCurrent?.items ?? []"
           :key="s.id"
           class="pop-item"
-          :class="{ active: i === mentionActive }"
+          :class="{ active: mentionLayer === 1 && i === mentionActive }"
           :title="s.desc"
           @mousedown.prevent="applyMention(s)"
-          @mousemove="mentionActive = i"
+          @mouseenter="mentionLayer = 1; mentionActive = i"
         >
           <img v-if="s.icon" class="pop-ico" :src="s.icon" alt="" />
           <span v-else class="pop-ico fallback">✦</span>
@@ -314,31 +431,31 @@ function removeFile(index: number) {
         </button>
       </div>
 
-      <!-- Skills 快选浮层：已安装技能，点击即指定该技能做任务 -->
+      <!-- 快选浮层：按种类列出已安装条目，点击即指定它做任务 -->
       <div v-if="pickerOpen" class="picker-pop">
         <input
           v-model="pickerQuery"
           class="pop-search"
-          placeholder="搜索已安装的 Skills"
-          @keydown.enter.prevent="pickerFiltered[0] && insertSkillMention(pickerFiltered[0])"
+          :placeholder="`搜索已安装的${pickerLabel}`"
+          @keydown.enter.prevent="pickerFiltered[0] && insertMention(pickerFiltered[0])"
         />
         <div class="pop-list">
           <div v-if="!pickerFiltered.length" class="pop-empty">
-            {{ loadingSkills ? '加载中…' : '暂无已安装的技能，点下方「管理 Skills」去安装' }}
+            {{ loadingSkills ? '加载中…' : `暂无已安装的${pickerLabel}，点下方「管理${pickerLabel}」去安装` }}
           </div>
           <button
             v-for="s in pickerFiltered"
             :key="s.id"
             class="pop-item"
             :title="s.desc"
-            @click="insertSkillMention(s)"
+            @click="insertMention(s)"
           >
             <img v-if="s.icon" class="pop-ico" :src="s.icon" alt="" />
             <span v-else class="pop-ico fallback">✦</span>
             <span class="pop-name">{{ s.name }}</span>
           </button>
         </div>
-        <button class="pop-manage" @click="openManage">⚙ 管理 Skills</button>
+        <button class="pop-manage" @click="openManage(pickerKind)">⚙ 管理{{ pickerLabel }}</button>
       </div>
 
       <div class="actions">
@@ -347,9 +464,9 @@ function removeFile(index: number) {
             <span class="ico plus">+</span>
             <span v-if="uploading" class="lbl">上传中…</span>
           </button>
-          <button class="cap" :class="{ on: pickerOpen }" @click="togglePicker"><span class="ico">✦</span>Skills</button>
-          <button class="cap" @click="emit('panel', 'connector')"><span class="ico">⇄</span>连接器</button>
-          <button class="cap" @click="emit('panel', 'tool')"><span class="ico">⚙</span>工具</button>
+          <button class="cap" :class="{ on: pickerOpen && pickerKind === 'skill' }" @click="togglePicker('skill')"><span class="ico">✦</span>Skills</button>
+          <button class="cap" :class="{ on: pickerOpen && pickerKind === 'connector' }" @click="togglePicker('connector')"><span class="ico">⇄</span>连接器</button>
+          <button class="cap" :class="{ on: pickerOpen && pickerKind === 'tool' }" @click="togglePicker('tool')"><span class="ico">⚙</span>工具</button>
           <button class="cap" @click="emit('panel', 'knowledge')"><span class="ico">▤</span>知识库</button>
         </div>
 
@@ -447,7 +564,8 @@ textarea::placeholder {
   inset: 0;
   z-index: 29;
 }
-.mention-pop,
+.mention-side,
+.mention-sub,
 .picker-pop {
   position: absolute;
   bottom: calc(100% - 2px);
@@ -459,12 +577,49 @@ textarea::placeholder {
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14);
   overflow: hidden;
 }
-.mention-pop {
-  min-width: 260px;
-  max-width: 340px;
-  max-height: 264px;
+/* @ 两层菜单：两个独立浮层，高度各自随内容 */
+.mention-side {
+  width: 132px;
+  padding: 4px;
+}
+.mention-sub {
+  left: 140px;
+  min-width: 240px;
+  max-width: 380px;
+  max-height: 300px;
   overflow-y: auto;
   padding: 4px;
+}
+.mp-cat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #2b3240;
+}
+.mp-cat:hover {
+  background: #f2f4f8;
+}
+.mp-cat.on {
+  background: #eef3ff;
+  color: #2b62d9;
+}
+.mp-cat:disabled {
+  color: #b0b6c0;
+  cursor: not-allowed;
+}
+.mp-cat-label {
+  flex: 1;
+  text-align: left;
+}
+.mp-arrow {
+  color: #a8afba;
 }
 .picker-pop {
   width: 320px;

@@ -64,9 +64,28 @@ function extractPluginId(item: Record<string, any>): string {
   return String(config?.PluginId ?? config?.pluginId ?? '')
 }
 
-const installedPluginIds = computed(() =>
-  (detail.value?.plugins ?? []).map(extractPluginId).filter(Boolean),
+/** 连接器 = PluginList 里 PluginClass === 1 的条目（PluginClass=0 是工具） */
+const isConnector = (item: Record<string, any>) => Number(item?.PluginClass) === 1
+
+/** 连接器 Tab「已安装」列：只列连接器，工具不混进来 */
+const installedConnectorItems = computed(() => (detail.value?.plugins ?? []).filter(isConnector))
+
+const installedConnectorIds = computed(() =>
+  (detail.value?.plugins ?? []).filter(isConnector).map(extractPluginId).filter(Boolean),
 )
+
+const installedToolIds = computed(() =>
+  (detail.value?.plugins ?? []).filter((p) => !isConnector(p)).map(extractPluginId).filter(Boolean),
+)
+
+/** 广场条目是否已绑定（连接器 Tab 比连接器，工具 Tab 比工具） */
+function isPluginInstalled(item: Record<string, any>): boolean {
+  const id = idOf(item)
+  if (!id) return false
+  return tab.value === 'connector'
+    ? installedConnectorIds.value.includes(id)
+    : installedToolIds.value.includes(id)
+}
 
 const knowledgeTool = computed(
   () => (detail.value?.tools ?? []).find((t) => (t.Name ?? t.name) === KNOWLEDGE_TOOL) ?? null,
@@ -261,7 +280,7 @@ function toggleAllKnowledge() {
         <!-- 工具 / 连接器 -->
         <div v-else-if="tab === 'tool' || tab === 'connector'" class="cols">
           <div class="col">
-            <h4>已安装（{{ tab === 'tool' ? (detail?.tools ?? []).length : (detail?.plugins ?? []).length }}）</h4>
+            <h4>已安装（{{ tab === 'tool' ? (detail?.tools ?? []).length : installedConnectorItems.length }}）</h4>
             <template v-if="tab === 'tool'">
               <div v-for="tool in detail?.tools ?? []" :key="nameOf(tool)" class="row">
                 <div>
@@ -272,7 +291,7 @@ function toggleAllKnowledge() {
               </div>
             </template>
             <template v-else>
-              <div v-for="plugin in detail?.plugins ?? []" :key="extractPluginId(plugin)" class="row">
+              <div v-for="plugin in installedConnectorItems" :key="extractPluginId(plugin)" class="row">
                 <div>
                   <div class="row-title">{{ nameOf(plugin) }}</div>
                   <div class="row-desc">{{ descOf(plugin) }}</div>
@@ -288,7 +307,14 @@ function toggleAllKnowledge() {
                 <div class="row-title">{{ nameOf(item) }}</div>
                 <div class="row-desc">{{ descOf(item) }}</div>
               </div>
-              <button class="act" @click="togglePlugin(item, false)">绑定</button>
+              <button
+                class="act"
+                :class="{ installed: isPluginInstalled(item) }"
+                :disabled="isPluginInstalled(item)"
+                @click="togglePlugin(item, false)"
+              >
+                {{ isPluginInstalled(item) ? '已绑定' : '绑定' }}
+              </button>
             </div>
           </div>
         </div>
