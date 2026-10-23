@@ -46,12 +46,91 @@ export async function describeAgent(applicationId: string, agentId: string): Pro
     AgentId: agentId,
     Domain: 2,
   })
-  const agent = data.Agent ?? {}
+  return normalizeAgent(data)
+}
+
+/**
+ * 平台侧（应用线上 Agent）当前配置：DescribeAgentDetail 不传 AgentId、
+ * 只传 AppId 时，上游返回的是应用自身在腾讯云 ADP 平台上的那份配置。
+ *
+ * 面板里增删改用的是「复制出来的 Agent」（它是复制时刻的快照，之后平台上的
+ * 新增连接器 / 工具 / 技能不会自动跟过来），所以要用它做同步基准。
+ */
+export async function describePlatformAgent(applicationId: string): Promise<AgentDetail> {
+  const data = await forward('DescribeAgentDetail', applicationId, {
+    AppId: applicationId,
+    Domain: 2,
+  })
+  return normalizeAgent(data)
+}
+
+function normalizeAgent(data: Any): AgentDetail {
+  const agent = pick(data, 'Agent') ?? {}
   return {
-    skills: agent.SkillList ?? [],
-    plugins: agent.PluginList ?? [],
-    tools: agent.ToolList ?? [],
+    skills: pick(agent, 'SkillList', 'skill_list') ?? [],
+    plugins: pick(agent, 'PluginList', 'plugin_list') ?? [],
+    tools: pick(agent, 'ToolList', 'tool_list') ?? [],
   }
+}
+
+/** 插件/连接器/工具的 PluginId：可能藏在 Config 子对象里 */
+export function pluginIdOf(item: Any): string {
+  const direct = pick(item, 'PluginId', 'pluginId')
+  if (direct) return String(direct)
+  const config = pick(item, 'Config', 'config') ?? {}
+  return String(pick(config, 'PluginId', 'pluginId') ?? '')
+}
+
+function skillIdOf(item: Any): string {
+  return String(pick(item, 'SkillId', 'skillId') ?? '')
+}
+
+export interface SyncResult {
+  /** 本次补绑的连接器 / 工具名称 */
+  plugins: string[]
+  /** 本次补充的技能数 */
+  skills: number
+}
+
+/**
+ * 把平台侧的新增能力同步到复制 Agent：只补不删。
+ *
+ * 不删是因为复制 Agent 上还可能有「只在面板里装过」的能力（平台那份上没有），
+ * 以平台为准做全量覆盖会把它们误删。
+ */
+export async function syncFromPlatform(
+  applicationId: string,
+  agentId: string,
+): Promise<SyncResult> {
+  const [platform, copy] = await Promise.all([
+    describePlatformAgent(applicationId),
+    describeAgent(applicationId, agentId),
+  ])
+
+  const owned = new Set(copy.plugins.map(pluginIdOf).filter(Boolean))
+  const added: string[] = []
+  for (const plugin of platform.plugins) {
+    const pluginId = pluginIdOf(plugin)
+    if (!pluginId || owned.has(pluginId)) continue
+    try {
+      await bindTool(applicationId, agentId, pluginId)
+      owned.add(pluginId)
+      added.push(pick(plugin, 'Name', 'name') ?? pluginId)
+    } catch {
+      // 单个绑定失败不阻断其余同步（例如该插件已下线）
+    }
+  }
+
+  const copySkillIds = copy.skills.map(skillIdOf).filter(Boolean)
+  const platformSkillIds = platform.skills.map(skillIdOf).filter(Boolean)
+  const merged = [...new Set([...copySkillIds, ...platformSkillIds])]
+  let skills = 0
+  if (merged.length !== copySkillIds.length) {
+    await setSkillList(applicationId, agentId, merged)
+    skills = merged.length - copySkillIds.length
+  }
+
+  return { plugins: added, skills }
 }
 
 // ---------------------------------------------------------------------------

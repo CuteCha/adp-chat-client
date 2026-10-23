@@ -14,6 +14,7 @@ build
 cache
 .codebuddy/
 .vercel
+.mcp.json
 yarn.lock
 
 # 日志与本地产物
