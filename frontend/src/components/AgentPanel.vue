@@ -20,7 +20,7 @@ import {
   parseKnowledgeScope,
   setKnowledgeScope,
   setSkillList,
-  syncFromPlatform,
+  syncPlatformOnce,
   unbindTool,
 } from '../composables/useAgent'
 import { invalidateInstalledSkills } from '../composables/useInstalledSkills'
@@ -114,35 +114,36 @@ async function refreshDetail() {
   }
 }
 
+function noticeOf(result: { plugins: string[]; skills: number } | null, empty = '已与平台配置一致') {
+  if (!result || (!result.plugins.length && !result.skills)) return empty
+  const pluginText = result.plugins.length ? result.plugins.join('、') : '无'
+  const skillText = result.skills ? `（技能 ${result.skills} 个）` : ''
+  return `已同步平台新增：${pluginText}${skillText}`
+}
+
 /**
- * 打开面板时静默同步一次：平台上新增的连接器 / 工具 / 技能（例如新加的
- * gstai-insight）不会自动跟到复制 Agent 上，这里补过来，保证与平台一致。
- * 同一个应用每次打开只同步一次，避免 run() 后的刷新触发循环。
+ * 打开面板时静默同步一次：平台上新增的连接器 / 工具 / 技能（例如新装的
+ * gstai-insight、清博舆情分析）不会自动跟到复制 Agent 上，这里补过来。
+ * 走统一入口 syncPlatformOnce：与 Sender 侧 @ 菜单共用同一次同步，不重复刷接口。
  */
-const autoSynced = ref<Record<string, boolean>>({})
 async function autoSync() {
-  if (!agentId.value || autoSynced.value[props.applicationId]) return
-  autoSynced.value[props.applicationId] = true
+  if (!agentId.value) return
   try {
-    const result = await syncFromPlatform(props.applicationId, agentId.value)
-    if (!result.plugins.length && !result.skills) return
+    const result = await syncPlatformOnce(props.applicationId)
+    if (!result || (!result.plugins.length && !result.skills)) return
     detail.value = await describeAgent(props.applicationId, agentId.value)
     invalidateInstalledSkills(props.applicationId)
-    syncNotice.value = `已同步平台新增：${result.plugins.length ? result.plugins.join('、') : '无'}`
-    if (result.skills) syncNotice.value += `（技能 ${result.skills} 个）`
+    syncNotice.value = noticeOf(result)
   } catch (e) {
     syncNotice.value = e instanceof Error ? `平台同步失败：${e.message}` : '平台同步失败'
   }
 }
 
-/** 手动同步：平台配置刚改过时用它立刻对齐 */
+/** 手动同步：force 绕过节流，平台配置刚改过时用它立刻对齐 */
 async function syncPlatform() {
   if (!agentId.value) return
   await run('同步平台配置', async () => {
-    const result = await syncFromPlatform(props.applicationId, agentId.value)
-    syncNotice.value = result.plugins.length || result.skills
-      ? `已同步平台新增：${result.plugins.length ? result.plugins.join('、') : '无'}${result.skills ? `（技能 ${result.skills} 个）` : ''}`
-      : '已与平台配置一致'
+    syncNotice.value = noticeOf(await syncPlatformOnce(props.applicationId, true))
   })
 }
 

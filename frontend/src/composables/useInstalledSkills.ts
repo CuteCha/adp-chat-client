@@ -8,7 +8,7 @@
  * 三类都用同一个 InstalledItem 结构，渲染与插入 @ 的逻辑可以完全复用。
  */
 import { ref } from 'vue'
-import { describeAgent, ensureAgentId } from './useAgent'
+import { describeAgent, ensureAgentId, resetPlatformSync, syncPlatformOnce } from './useAgent'
 
 export interface InstalledItem {
   id: string
@@ -80,6 +80,19 @@ function normalizeTools(tools: Record<string, any>[]): InstalledItem[] {
     .filter((t) => t.id)
 }
 
+/**
+ * 与平台侧对齐：把平台上新装的能力补到复制 Agent 上。
+ * 有新增时清掉本地缓存，让本次读取拿到最新集合。
+ */
+async function syncWithPlatform(applicationId: string): Promise<void> {
+  try {
+    const result = await syncPlatformOnce(applicationId)
+    if (result && (result.plugins.length || result.skills)) cache.delete(applicationId)
+  } catch (e) {
+    console.error('[useInstalledSkills] platform sync failed', e)
+  }
+}
+
 export async function loadInstalledSkills(applicationId: string): Promise<void> {
   if (!applicationId || loadingSkills.value) return
   const cached = cache.get(applicationId)
@@ -87,10 +100,14 @@ export async function loadInstalledSkills(applicationId: string): Promise<void> 
     installedSkills.value = cached.skills
     installedTools.value = cached.tools
     installedConnectors.value = cached.connectors
+    // 命中缓存也要对齐一次平台：新增的 Skills / 连接器不能等到刷新页面才出现
+    void syncWithPlatform(applicationId)
     return
   }
   loadingSkills.value = true
   try {
+    // 先与平台侧对齐，再读副本，保证 @ 菜单 / 快选看到的是最新已安装集合
+    await syncWithPlatform(applicationId)
     const agentId = await ensureAgentId(applicationId)
     const detail = await describeAgent(applicationId, agentId)
     const next: CapabilitySet = {
@@ -111,8 +128,13 @@ export async function loadInstalledSkills(applicationId: string): Promise<void> 
 
 /** 管理面板安装/卸载后调用，让缓存失效，下次打开快选时重新拉取 */
 export function invalidateInstalledSkills(applicationId?: string): void {
-  if (applicationId) cache.delete(applicationId)
-  else cache.clear()
+  if (applicationId) {
+    cache.delete(applicationId)
+    resetPlatformSync(applicationId)
+  } else {
+    cache.clear()
+    resetPlatformSync()
+  }
 }
 
 export function useInstalledSkills() {
