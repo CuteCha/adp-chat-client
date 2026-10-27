@@ -268,16 +268,32 @@ class TCADP:
     # ------------------------------------------------------------------
     # 文件
     # ------------------------------------------------------------------
-    async def upload(self, file_data: bytes, mime_type: str, mode: str = 'standard') -> dict:
-        """DescribeStorageCredential 拿预签名地址 → PUT 到 COS。返回 {Url, CosUrl, CosBucket}。"""
+    async def upload(
+        self,
+        file_data: bytes,
+        mime_type: str,
+        mode: str = 'standard',
+        force_public: bool = False,
+    ) -> dict:
+        """DescribeStorageCredential 拿预签名地址 → PUT 到 COS。
+
+        返回 {Url, CosUrl, CosBucket, ETag}。
+        IsPublic 取值（实测上游行为）：
+          - 图片：True —— 前端/模型要直接用 URL 渲染，必须公网可读
+          - claw：True —— Claw Agent 靠 URL 自己下载，必须在公有桶
+          - force_public：True —— 解析拿不到 doc_id 时的兜底，改用可被直接下载的公开地址
+          - standard 文档：False —— 得到 /corp/.../doc/ 私有路径，
+            docParse 只认这种路径；公开桶路径会报 ErrInvalidURL
+        """
         action = 'DescribeStorageCredential'
         file_type = self._resolve_file_type(mime_type)
+        is_image = (mime_type or '').startswith('image/')
         # claw/agent 模式使用 BotBizId='0' + IsPublic=True，确保文件在公有桶中可被 Claw Agent 下载
         app_id = '0' if mode == 'claw' else self.config.get('AppId', '')
         payload = {
             'AppId': app_id,
             'FileType': file_type,
-            'IsPublic': True,
+            'IsPublic': mode == 'claw' or is_image or force_public,
             'TypeKey': 'realtime',
         }
         resp = (
@@ -323,6 +339,8 @@ class TCADP:
                     text = await put_resp.text()
                     logging.error('[TCADP.upload] PUT failed: status=%s body=%s', put_resp.status, text)
                     raise UpstreamError(f'文件上传失败: {put_resp.status}')
+                # COS 返回的 ETag：docParse 用它做文件校验，缺失会报 ErrRealtimeDocParseFailed
+                etag = put_resp.headers.get('ETag', '').strip('"')
 
         cos_url = resp.get('UploadPath', '')
         url = resp.get('FileUrl') or resp.get('file_url') or (
@@ -352,7 +370,12 @@ class TCADP:
             except Exception as e:  # noqa: BLE001 - 拿不到 DownloadUrl 时退回 FileUrl
                 logging.warning('[TCADP.upload] 获取 DownloadUrl 失败: %s', e)
 
-        return {'Url': url, 'CosUrl': cos_url, 'CosBucket': resp.get('Bucket', '')}
+        return {
+            'Url': url,
+            'CosUrl': cos_url,
+            'CosBucket': resp.get('Bucket', ''),
+            'ETag': etag,
+        }
 
     async def parse_document(
         self,
@@ -379,13 +402,14 @@ class TCADP:
             'file_type': file_type,
             'file_name': file_name,
             'cos_url': cos_url,
+            # e_tag 缺失时上游会报 ErrRealtimeDocParseFailed，拿不到 doc_id
             'e_tag': e_tag,
-            'cos_hash': cos_hash,
+            'cos_hash': cos_hash or e_tag,
             'size': size,
             'bot_app_key': self.config['AppKey'],
+            # session_id 是必填项，缺失时上游直接返回 400「请求参数错误」
+            'session_id': conversation_id,
         }
-        if conversation_id:
-            data['session_id'] = conversation_id
 
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
             async with session.post(

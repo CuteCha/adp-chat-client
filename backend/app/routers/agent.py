@@ -1,100 +1,46 @@
-"""Agent 复制链路：AgentId 缓存的读写。
+"""Agent 信息：读取应用自身（独立构建）的 Agent。
 
-四个按钮（Skills / 工具 / 连接器 / 知识库）都需要先拿到一个可修改的 AgentId：
-  POST /agent/copy   幂等：库里有就直接返回，没有才调 CopyAgentFromApp
-  GET  /agent/config 读缓存
-  DELETE /agent/config 清缓存（下次 copy 重新生成）
+项目不再使用「从应用复制出来的 Agent」——所有能力（Skills / 工具 / 连接器 /
+知识库）都直接读写应用自己的那份 Agent：
+
+  POST /agent/info   返回该应用的 AgentId（幂等，上游就是同一个 Agent）
+
+DescribeAgentDetail 不传 AgentId、只传 AppId 时，上游返回的就是应用在腾讯云
+ADP 平台上的那份配置（含 AgentId / SkillList / PluginList / ToolList），
+面板里的增删改也直接作用于它，因此不存在「副本与平台不一致」需要同步的问题。
 """
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 
-from app.db import DbSession
-from app.deps import UserId
-from app.models import AgentConfig
 from app.registry import get_app
 from app.tcadp import UpstreamError
 
 router = APIRouter(prefix='/agent', tags=['agent'])
 
 
-class CopyBody(BaseModel):
+class AgentInfoBody(BaseModel):
     ApplicationId: str
 
 
-async def _get_config(db, user_id: str, application_id: str) -> AgentConfig | None:
-    stmt = select(AgentConfig).where(
-        AgentConfig.user_id == user_id,
-        AgentConfig.application_id == application_id,
-    )
-    return (await db.execute(stmt)).scalars().first()
-
-
-async def _save_config(db, user_id: str, application_id: str, agent_id: str) -> AgentConfig:
-    record = await _get_config(db, user_id, application_id)
-    if record is None:
-        record = AgentConfig(
-            user_id=user_id, application_id=application_id, agent_id=agent_id
-        )
-        db.add(record)
-    else:
-        record.agent_id = agent_id
-    await db.commit()
-    return record
-
-
-@router.post('/copy')
-async def copy_agent(body: CopyBody, user_id: UserId, db: DbSession):
-    """返回该用户在该应用下可用的 AgentId（必要时才向上游复制一份）。"""
+@router.post('/info')
+async def get_agent_info(body: AgentInfoBody):
+    """返回应用自身 Agent 的 AgentId。"""
     app = get_app(body.ApplicationId)
-
-    cached = await _get_config(db, user_id, body.ApplicationId)
-    if cached and cached.agent_id:
-        return {'Response': {'ApplicationId': body.ApplicationId, 'AgentId': cached.agent_id}}
-
     try:
         response = await app.forward_request(
-            'CopyAgentFromApp',
-            {'Kind': 1, 'AppId': body.ApplicationId},
+            'DescribeAgentDetail',
+            {'AppId': body.ApplicationId, 'Domain': 2},
         )
     except UpstreamError as e:
-        logging.error('[agent.copy] CopyAgentFromApp failed: %s', e)
+        logging.warning('[agent.info] DescribeAgentDetail failed: %s', e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
-    agent_id = response.get('ParentAgentId') or response.get('AgentId') or ''
+    agent = response.get('Agent') or response
+    agent_id = str(agent.get('AgentId') or '')
     if not agent_id:
-        raise HTTPException(status_code=502, detail='CopyAgentFromApp 未返回 AgentId')
+        raise HTTPException(status_code=502, detail='DescribeAgentDetail 未返回 AgentId')
 
-    await _save_config(db, user_id, body.ApplicationId, agent_id)
     return {'Response': {'ApplicationId': body.ApplicationId, 'AgentId': agent_id}}
-
-
-@router.get('/config')
-async def get_config(
-    user_id: UserId,
-    db: DbSession,
-    application_id: str = Query(..., alias='ApplicationId'),
-):
-    record = await _get_config(db, user_id, application_id)
-    return {
-        'Response': {
-            'ApplicationId': application_id,
-            'AgentId': record.agent_id if record else None,
-        }
-    }
-
-
-@router.delete('/config')
-async def delete_config(
-    user_id: UserId,
-    db: DbSession,
-    application_id: str = Query(..., alias='ApplicationId'),
-):
-    record = await _get_config(db, user_id, application_id)
-    if record is not None:
-        await db.delete(record)
-        await db.commit()
-    return {'Response': {'ApplicationId': application_id, 'AgentId': None}}

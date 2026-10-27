@@ -1,9 +1,10 @@
 /**
  * M3：Skills / 工具 / 连接器 / 知识库四个按钮的数据层。
  *
- * 所有写操作都作用于「复制出来的 Agent」，因此第一步必须是 ensureAgentId：
- * 库里有缓存就复用，没有才调 CopyAgentFromApp（后端已做幂等）。
- * 读写都走后端 /adp/{action} 转发，由 action_version 决定 service / version。
+ * 直接使用「应用自身的 Agent」（独立构建，不存在复制到用户维度的副本）：
+ *  - ensureAgentId 取到的就是应用在平台上的那份 Agent
+ *  - 读写都作用于同一个 Agent，因此没有副本漂移，也就不需要平台同步
+ * 请求均走后端 /adp/{action} 转发，由 action_version 决定 service / version。
  */
 
 import { forward, getAgentId } from '../api'
@@ -49,21 +50,6 @@ export async function describeAgent(applicationId: string, agentId: string): Pro
   return normalizeAgent(data)
 }
 
-/**
- * 平台侧（应用线上 Agent）当前配置：DescribeAgentDetail 不传 AgentId、
- * 只传 AppId 时，上游返回的是应用自身在腾讯云 ADP 平台上的那份配置。
- *
- * 面板里增删改用的是「复制出来的 Agent」（它是复制时刻的快照，之后平台上的
- * 新增连接器 / 工具 / 技能不会自动跟过来），所以要用它做同步基准。
- */
-export async function describePlatformAgent(applicationId: string): Promise<AgentDetail> {
-  const data = await forward('DescribeAgentDetail', applicationId, {
-    AppId: applicationId,
-    Domain: 2,
-  })
-  return normalizeAgent(data)
-}
-
 function normalizeAgent(data: Any): AgentDetail {
   const agent = pick(data, 'Agent') ?? {}
   return {
@@ -79,154 +65,6 @@ export function pluginIdOf(item: Any): string {
   if (direct) return String(direct)
   const config = pick(item, 'Config', 'config') ?? {}
   return String(pick(config, 'PluginId', 'pluginId') ?? '')
-}
-
-function skillIdOf(item: Any): string {
-  return String(pick(item, 'SkillId', 'skillId') ?? '')
-}
-
-export interface SyncResult {
-  /** 本次补绑的连接器 / 工具名称 */
-  plugins: string[]
-  /** 本次补充的技能数 */
-  skills: number
-}
-
-/**
- * 「已经见过的能力」记录（localStorage，按应用维度）。
- *
- * 存在的意义：同步只补「平台上新出现的能力」，不复活用户在面板里主动卸载的
- * 能力 —— 否则每次同步都会把刚卸载的平台自带技能又装回来。
- */
-const KNOWN_PREFIX = 'adp-known-capabilities:'
-interface KnownSet {
-  plugins: string[]
-  skills: string[]
-}
-
-function readKnown(applicationId: string): KnownSet {
-  try {
-    const raw = localStorage.getItem(KNOWN_PREFIX + applicationId)
-    if (!raw) return { plugins: [], skills: [] }
-    const parsed = JSON.parse(raw)
-    return {
-      plugins: Array.isArray(parsed?.plugins) ? parsed.plugins : [],
-      skills: Array.isArray(parsed?.skills) ? parsed.skills : [],
-    }
-  } catch {
-    return { plugins: [], skills: [] }
-  }
-}
-
-function writeKnown(applicationId: string, known: KnownSet): void {
-  try {
-    localStorage.setItem(KNOWN_PREFIX + applicationId, JSON.stringify(known))
-  } catch {
-    // localStorage 不可用时同步退化为「每次都补」，不影响主流程
-  }
-}
-
-/**
- * 把平台侧的新增能力同步到复制 Agent：只补不删。
- *
- * 不删：复制 Agent 上可能有「只在面板里装过」的能力（平台那份上没有）。
- * 只补：只补平台上有、副本上没有、且之前没见过的能力。
- */
-export async function syncFromPlatform(
-  applicationId: string,
-  agentId: string,
-): Promise<SyncResult> {
-  const [platform, copy] = await Promise.all([
-    describePlatformAgent(applicationId),
-    describeAgent(applicationId, agentId),
-  ])
-
-  const known = readKnown(applicationId)
-  const knownPlugins = new Set(known.plugins)
-  const knownSkills = new Set(known.skills)
-
-  // 首次同步：以副本当前内容为基线，平台上多出来的才算「新增」
-  if (!known.plugins.length && !known.skills.length) {
-    for (const item of copy.plugins) {
-      const id = pluginIdOf(item)
-      if (id) knownPlugins.add(id)
-    }
-    for (const item of copy.skills) {
-      const id = skillIdOf(item)
-      if (id) knownSkills.add(id)
-    }
-  }
-
-  const ownedPlugins = new Set(copy.plugins.map(pluginIdOf).filter(Boolean))
-  const added: string[] = []
-  for (const plugin of platform.plugins) {
-    const pluginId = pluginIdOf(plugin)
-    if (!pluginId || ownedPlugins.has(pluginId) || knownPlugins.has(pluginId)) continue
-    try {
-      await bindTool(applicationId, agentId, pluginId)
-      ownedPlugins.add(pluginId)
-      knownPlugins.add(pluginId)
-      added.push(pick(plugin, 'Name', 'name') ?? pluginId)
-    } catch {
-      // 单个绑定失败不阻断其余同步（例如该插件已下线）
-    }
-  }
-
-  const copySkillIds = copy.skills.map(skillIdOf).filter(Boolean)
-  const ownedSkills = new Set(copySkillIds)
-  const newSkillIds = [
-    ...new Set(
-      platform.skills
-        .map(skillIdOf)
-        .filter((id) => id && !ownedSkills.has(id) && !knownSkills.has(id)),
-    ),
-  ]
-  if (newSkillIds.length) {
-    await setSkillList(applicationId, agentId, [...new Set([...copySkillIds, ...newSkillIds])])
-    for (const id of newSkillIds) knownSkills.add(id)
-  }
-
-  writeKnown(applicationId, { plugins: [...knownPlugins], skills: [...knownSkills] })
-  return { plugins: added, skills: newSkillIds.length }
-}
-
-/**
- * 统一同步入口：所有「读已安装能力」的地方都先调它，保证与平台对齐。
- * 同一应用 30s 内只跑一次（并发共享同一个 Promise），避免刷接口。
- */
-const SYNC_TTL_MS = 30_000
-interface SyncEntry {
-  at: number
-  inflight: Promise<SyncResult> | null
-}
-const syncEntries = new Map<string, SyncEntry>()
-
-export async function syncPlatformOnce(
-  applicationId: string,
-  force = false,
-): Promise<SyncResult | null> {
-  if (!applicationId) return null
-  const entry = syncEntries.get(applicationId)
-  if (!force) {
-    if (entry?.inflight) return entry.inflight
-    if (entry && Date.now() - entry.at < SYNC_TTL_MS) return null
-  }
-  const inflight = (async () => {
-    const agentId = await ensureAgentId(applicationId)
-    return syncFromPlatform(applicationId, agentId)
-  })()
-  syncEntries.set(applicationId, { at: entry?.at ?? 0, inflight })
-  try {
-    return await inflight
-  } finally {
-    syncEntries.set(applicationId, { at: Date.now(), inflight: null })
-  }
-}
-
-/** 面板里手动安装/卸载后清掉节流，下次读取立刻重新对齐 */
-export function resetPlatformSync(applicationId?: string): void {
-  if (applicationId) syncEntries.delete(applicationId)
-  else syncEntries.clear()
 }
 
 // ---------------------------------------------------------------------------

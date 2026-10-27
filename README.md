@@ -22,9 +22,9 @@ adp-chat-client/
 | 对话 | `POST /chat/message`（SSE）、`GET /chat/messages`（云端历史，V2） |
 | 会话 | `GET/POST/DELETE /conversations`、`PATCH /conversations/{id}`、`GET /chat/conversations` |
 | 应用 | `GET /application/list` |
-| Agent | `POST /agent/copy`（幂等 CopyAgentFromApp）、`GET/DELETE /agent/config` |
+| Agent | `POST /agent/info`（返回应用自身 Agent 的 AgentId） |
 | 通用转发 | `POST /adp/{action}`（Skills / 工具 / 连接器 / 知识库的所有增删改） |
-| 文件 | `POST /file/upload`、`POST /file/parse`（docParse SSE）、`GET /file/download`、`GET /file/list_dir` |
+| 文件 | `POST /file/upload`（`Public=1` 可强制公开桶）、`POST /file/parse`（docParse SSE）、`GET /file/download`、`GET /file/list_dir` |
 | 分享 | `POST /share/create`、`GET /share/{id}` |
 | 反馈 | `POST /feedback/rate`（Like=1 / Dislike=2） |
 | 引用 | `POST /reference/detail`（DescribeRefer） |
@@ -47,7 +47,6 @@ adp-chat-client/
 |---|---|
 | `user` | 白名单（靠 SQL 脚本维护，不提供管理接口） |
 | `chat_conversation` | 会话元信息（消息本体在腾讯云） |
-| `agent_config` | `UserId + ApplicationId → AgentId` 缓存 |
 | `shared_conversation` | 分享快照 |
 
 建表：`backend/scripts/init_db.sql`；白名单示例：`backend/scripts/user.sql`。

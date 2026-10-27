@@ -86,9 +86,9 @@ export async function forward(action: string, applicationId: string, payload: Re
   return data.Response as Record<string, any>
 }
 
-/** 幂等获取该用户在该应用下可修改的 AgentId */
+/** 获取应用自身（独立构建）Agent 的 AgentId */
 export async function getAgentId(applicationId: string) {
-  const res = await fetch(`${BASE}/agent/copy`, {
+  const res = await fetch(`${BASE}/agent/info`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ ApplicationId: applicationId }),
@@ -97,18 +97,27 @@ export async function getAgentId(applicationId: string) {
   return ((await res.json()).Response as { AgentId: string }).AgentId
 }
 
-/** 文件上传：请求体为原始字节 */
-export async function uploadFile(file: File, applicationId: string, mode = 'standard') {
+/** 文件上传：请求体为原始字节；mimeType 为调用方按白名单/扩展名解析出的类型
+ *  publicUrl=true 时强制落到公开桶（解析拿不到 doc_id 时的兜底） */
+export async function uploadFile(
+  file: File,
+  applicationId: string,
+  mode = 'standard',
+  mimeType?: string,
+  publicUrl = false,
+) {
+  const type = mimeType || file.type || 'application/octet-stream'
   const h = headers() as Record<string, string>
-  h['Content-Type'] = file.type || 'application/octet-stream'
+  h['Content-Type'] = type
   const query = new URLSearchParams({
     ApplicationId: applicationId,
-    Type: file.type || 'application/octet-stream',
+    Type: type,
     Mode: mode,
   })
+  if (publicUrl) query.set('Public', '1')
   const res = await fetch(`${BASE}/file/upload?${query}`, { method: 'POST', headers: h, body: file })
   if (!res.ok) throw new Error(`上传失败: ${res.status}`)
-  return (await res.json()) as { Url: string; CosUrl: string; CosBucket: string }
+  return (await res.json()) as { Url: string; CosUrl: string; CosBucket: string; ETag?: string }
 }
 
 /** 实时文档解析 SSE：返回原始 Response，由调用方逐行读取取 doc_id */

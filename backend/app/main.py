@@ -63,7 +63,7 @@ app.include_router(conversation.router)
 app.include_router(application.router)
 app.include_router(user.router)
 
-# M3：Agent 复制链路 + 通用转发（Skills / 工具 / 连接器 / 知识库）
+# M3：Agent 信息 + 通用转发（Skills / 工具 / 连接器 / 知识库）
 app.include_router(forward.router)
 app.include_router(agent.router)
 

@@ -21,14 +21,8 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_user
     ON chat_conversation (user_id, last_active_at DESC);
 
--- AgentId 缓存：Skills / 工具 / 连接器 / 知识库按钮需要一个可修改的 AgentId
-CREATE TABLE IF NOT EXISTS agent_config (
-    id             SERIAL PRIMARY KEY,
-    user_id        VARCHAR(64) NOT NULL,
-    application_id VARCHAR(64) NOT NULL,
-    agent_id       VARCHAR(64) NOT NULL,
-    CONSTRAINT uq_agent_user_app UNIQUE (user_id, application_id)
-);
+-- AgentId 不再落库缓存：直接读应用自身的 Agent（POST /agent/info）
+-- （历史库里遗留的 agent_config 表已不再使用，可自行清理）
 
 -- 分享快照
 CREATE TABLE IF NOT EXISTS shared_conversation (

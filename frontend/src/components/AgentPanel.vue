@@ -4,6 +4,7 @@
  *
  * 统一模式：进面板先 ensureAgentId + DescribeAgentDetail 拿到「已安装集合」，
  * 然后从广场搜索「候选集合」，安装 = 追加，卸载 = 移除，最后整体写回上游。
+ * 所有读写都作用于应用自身的 Agent，没有副本漂移，无需平台同步。
  */
 import { computed, ref, watch } from 'vue'
 import {
@@ -20,7 +21,6 @@ import {
   parseKnowledgeScope,
   setKnowledgeScope,
   setSkillList,
-  syncPlatformOnce,
   unbindTool,
 } from '../composables/useAgent'
 import { invalidateInstalledSkills } from '../composables/useInstalledSkills'
@@ -46,8 +46,6 @@ const detail = ref<AgentDetail | null>(null)
 const loading = ref(false)
 const working = ref('')
 const error = ref('')
-/** 平台同步结果提示 */
-const syncNotice = ref('')
 
 const keyword = ref('')
 const skillItems = ref<Record<string, any>[]>([])
@@ -106,45 +104,11 @@ async function refreshDetail() {
   try {
     agentId.value = await ensureAgentId(props.applicationId)
     detail.value = await describeAgent(props.applicationId, agentId.value)
-    await autoSync()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
     loading.value = false
   }
-}
-
-function noticeOf(result: { plugins: string[]; skills: number } | null, empty = '已与平台配置一致') {
-  if (!result || (!result.plugins.length && !result.skills)) return empty
-  const pluginText = result.plugins.length ? result.plugins.join('、') : '无'
-  const skillText = result.skills ? `（技能 ${result.skills} 个）` : ''
-  return `已同步平台新增：${pluginText}${skillText}`
-}
-
-/**
- * 打开面板时静默同步一次：平台上新增的连接器 / 工具 / 技能（例如新装的
- * gstai-insight、清博舆情分析）不会自动跟到复制 Agent 上，这里补过来。
- * 走统一入口 syncPlatformOnce：与 Sender 侧 @ 菜单共用同一次同步，不重复刷接口。
- */
-async function autoSync() {
-  if (!agentId.value) return
-  try {
-    const result = await syncPlatformOnce(props.applicationId)
-    if (!result || (!result.plugins.length && !result.skills)) return
-    detail.value = await describeAgent(props.applicationId, agentId.value)
-    invalidateInstalledSkills(props.applicationId)
-    syncNotice.value = noticeOf(result)
-  } catch (e) {
-    syncNotice.value = e instanceof Error ? `平台同步失败：${e.message}` : '平台同步失败'
-  }
-}
-
-/** 手动同步：force 绕过节流，平台配置刚改过时用它立刻对齐 */
-async function syncPlatform() {
-  if (!agentId.value) return
-  await run('同步平台配置', async () => {
-    syncNotice.value = noticeOf(await syncPlatformOnce(props.applicationId, true))
-  })
 }
 
 async function searchSkills() {
@@ -292,16 +256,7 @@ function toggleAllKnowledge() {
       <div class="toolbar">
         <input v-model="keyword" class="search" placeholder="搜索…" @keyup.enter="refreshTabData" />
         <button class="ghost" @click="refreshTabData">搜索</button>
-        <button
-          class="ghost"
-          :disabled="!agentId || !!working"
-          title="把腾讯云 ADP 平台上新加的连接器 / 工具 / 技能补到当前 Agent"
-          @click="syncPlatform"
-        >
-          同步平台配置
-        </button>
         <span v-if="working" class="working">{{ working }} 处理中…</span>
-        <span v-else-if="syncNotice" class="notice">{{ syncNotice }}</span>
       </div>
 
       <div v-if="error" class="err">{{ error }}</div>

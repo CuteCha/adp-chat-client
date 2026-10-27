@@ -1,14 +1,13 @@
 """数据库表：
   - user：白名单（服务 B 不做认证，仅按 X-User-Id 判断是否有权使用）
   - chat_conversation：会话列表（历史消息本体在腾讯云，本地只存会话元信息）
-  - agent_config：UserId + ApplicationId → AgentId（CopyAgentFromApp 结果缓存）
   - shared_conversation：分享快照
 """
 
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -56,24 +55,6 @@ class ChatConversation(Base):
             'Title': self.title or '',
             'LastActiveAt': self.last_active_at,
             'CreatedAt': self.created_at,
-        }
-
-
-class AgentConfig(Base):
-    """AgentId 缓存：一个用户在一个应用下只需要一份，用于 Skills/工具/连接器/知识库按钮。"""
-
-    __tablename__ = 'agent_config'
-    __table_args__ = (UniqueConstraint('user_id', 'application_id', name='uq_agent_user_app'),)
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    application_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    agent_id: Mapped[str] = mapped_column(String(64), nullable=False)
-
-    def to_dict(self) -> dict:
-        return {
-            'ApplicationId': self.application_id,
-            'AgentId': self.agent_id,
         }
 
 

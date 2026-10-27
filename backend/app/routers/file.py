@@ -27,19 +27,24 @@ async def upload_file(
     application_id: str = Query(..., alias='ApplicationId'),
     mime_type: str = Query('image/jpeg', alias='Type'),
     mode: str = Query('standard', alias='Mode'),
+    public: bool = Query(False, alias='Public'),
 ):
-    """请求体为文件原始字节；返回 {Url, CosUrl, CosBucket}。"""
+    """请求体为文件原始字节；返回 {Url, CosUrl, CosBucket, ETag}。
+
+    Public=1 强制落到公开桶：解析拿不到 doc_id 时用它兜底，
+    保证文件始终有一个可被直接下载的地址。
+    """
     app = get_app(application_id)
     file_data = await request.body()
     if not file_data:
         raise HTTPException(status_code=400, detail='文件内容为空')
 
     logging.info(
-        '[file.upload] ApplicationId=%s Type=%s Mode=%s size=%s',
-        application_id, mime_type, mode, len(file_data),
+        '[file.upload] ApplicationId=%s Type=%s Mode=%s Public=%s size=%s',
+        application_id, mime_type, mode, public, len(file_data),
     )
     try:
-        result = await app.upload(file_data, mime_type, mode)
+        result = await app.upload(file_data, mime_type, mode, force_public=public)
     except UpstreamError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     return result
@@ -63,7 +68,8 @@ async def parse_file(request: Request, user_id: UserId):
             e_tag=body.get('ETag', ''),
             cos_hash=body.get('CosHash', ''),
             size=body.get('Size', '0'),
-            conversation_id=body.get('ConversationId', ''),
+            # session_id 必填：前端未传会话时以 user_id 兜底，否则上游返回 400
+            conversation_id=body.get('ConversationId', '') or user_id,
         ):
             yield chunk
 
