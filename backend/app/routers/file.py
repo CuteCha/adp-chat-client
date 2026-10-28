@@ -85,8 +85,13 @@ async def download_file(
     app_id: str = Query('', alias='AppId'),
     workspace_id: str = Query('', alias='WorkspaceId'),
     path: str = Query(..., alias='Path'),
+    inline: bool = Query(False, alias='Inline'),
 ):
-    """从工作空间下载文件原始内容（前端用同域地址避免跨域）。"""
+    """从工作空间下载文件原始内容（前端用同域地址避免跨域）。
+
+    Inline=1 时 Content-Disposition 用 inline，浏览器可直接内联
+    预览 PDF / 图片等（<iframe> / <img> 引用同一地址）。
+    """
     app = get_app(application_id)
     try:
         content, content_type, file_name = await app.download_file_content(
@@ -95,11 +100,12 @@ async def download_file(
     except UpstreamError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
+    disposition = 'inline' if inline else 'attachment'
     return Response(
         content=content,
         media_type=content_type,
         headers={
-            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(file_name, safe='')}",
+            'Content-Disposition': f"{disposition}; filename*=UTF-8''{quote(file_name, safe='')}",
         },
     )
 

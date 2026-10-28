@@ -204,3 +204,87 @@ export interface ConversationItem {
   LastActiveAt: number
   CreatedAt: number
 }
+
+// ---------------------------------------------------------------------------
+// 工作区（沙箱）文件：目录列表 / 下载 / 预览
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceDirEntry {
+  name: string
+  type: string // FILE_TYPE_FILE | FILE_TYPE_DIRECTORY
+  path?: string
+  size?: number
+  modifiedTime?: string | number
+}
+
+/** DescribeConversation 拿会话绑定的沙箱 WorkspaceId（后端缓存凭证，前端只拿 id） */
+export async function getWorkspaceId(applicationId: string, conversationId: string): Promise<string> {
+  const data = await forward('DescribeConversation', applicationId, {
+    ConversationId: conversationId,
+    Type: 5,
+  })
+  const ws = data?.Workspace ?? {}
+  return String(ws.WorkspaceId ?? ws.workspace_id ?? '')
+}
+
+/** ListDir（沙箱协议，走后端 /file/list_dir 代理）：返回某层目录条目 */
+export async function listWorkspaceDir(
+  applicationId: string,
+  params: { workspaceId?: string; path: string; depth?: number },
+): Promise<WorkspaceDirEntry[]> {
+  const q = new URLSearchParams({
+    ApplicationId: applicationId,
+    Path: params.path,
+    Depth: String(params.depth ?? 1),
+  })
+  if (params.workspaceId) q.set('WorkspaceId', params.workspaceId)
+  const res = await fetch(`${BASE}/file/list_dir?${q}`, { headers: headers() })
+  if (!res.ok) throw new Error(`目录读取失败: ${res.status}`)
+  const data = await res.json()
+  const entries = data?.entries ?? data?.Entries ?? data?.list ?? []
+  return entries as WorkspaceDirEntry[]
+}
+
+/** 同域代理下载/预览地址。
+ *  注意：<iframe>/<img> 的 src 带不上 X-User-Id 头，直接引用会被 403，
+ *  预览请用 fetchWorkspaceBlob 拿 blob URL；此函数仅供调试/无鉴权场景。 */
+export function workspaceFileUrl(
+  applicationId: string,
+  params: { workspaceId?: string; path: string; inline?: boolean },
+): string {
+  const q = new URLSearchParams({
+    ApplicationId: applicationId,
+    Path: params.path,
+  })
+  if (params.workspaceId) q.set('WorkspaceId', params.workspaceId)
+  if (params.inline) q.set('Inline', '1')
+  return `${BASE}/file/download?${q}`
+}
+
+/** 带认证头拉取工作区文件，返回浏览器本地 blob URL（预览用） */
+export async function fetchWorkspaceBlob(
+  applicationId: string,
+  params: { workspaceId?: string; path: string },
+): Promise<string> {
+  const res = await fetch(
+    workspaceFileUrl(applicationId, { ...params, inline: true }),
+    { headers: headers() },
+  )
+  if (!res.ok) throw new Error(`文件读取失败: ${res.status}`)
+  return URL.createObjectURL(await res.blob())
+}
+
+/** 触发浏览器下载工作区文件（fetch → blob，携带认证头） */
+export async function downloadWorkspaceFile(
+  applicationId: string,
+  params: { workspaceId?: string; path: string },
+): Promise<void> {
+  const url = await fetchWorkspaceBlob(applicationId, params)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = params.path.split('/').pop() || 'file'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+}

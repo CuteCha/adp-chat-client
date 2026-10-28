@@ -5,6 +5,7 @@ import type { Message } from '../sse/types'
 import Markdown from './Markdown.vue'
 import ReferenceTags from './ReferenceTags.vue'
 import StatusLine from './StatusLine.vue'
+import ArtifactCards from './workspace/ArtifactCards.vue'
 
 const props = defineProps<{ message: Message; applicationId?: string }>()
 
@@ -40,6 +41,8 @@ const EXEC_PHRASES = ['正在执行…', '正在调用工具处理…', '正在�
     <div v-if="!isThought && !isTool" class="reply">
       <Markdown :source="text" />
       <ReferenceTags :references="references" :application-id="applicationId || ''" />
+      <!-- 产物卡片：回复里提到的 /workdir/... 产物统一放到最后，可下载/预览 -->
+      <ArtifactCards :text="text" />
     </div>
 
     <!-- 思考 / 工具调用：默认折叠 -->

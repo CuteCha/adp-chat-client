@@ -8,6 +8,8 @@ import AssistantGroup, { type AssistantEntry } from './components/AssistantGroup
 import StatusLine from './components/StatusLine.vue'
 import Sender from './components/Sender.vue'
 import AgentPanel from './components/AgentPanel.vue'
+import WorkspacePanel from './components/workspace/WorkspacePanel.vue'
+import { openWorkspace, setWorkspaceContext } from './composables/useWorkspace'
 import type { Questionnaire, QuestionnaireAnswer, Record as RecordV2 } from './sse/types'
 import { isUserRecordInvisible } from './utils/record'
 import { pickQuestionnaireContent } from './utils/questionnaire'
@@ -273,6 +275,11 @@ const showPendingHint = computed(() => {
 
 watch(conversationVersion, () => refreshConversations())
 
+/** 工作区面板上下文：应用 / 会话变化时同步给 useWorkspace */
+watch([applicationId, conversationId], ([appId, convId]) => setWorkspaceContext(appId, convId), {
+  immediate: true,
+})
+
 // 流式期间持续贴底（text.delta 会不断更新最后一条记录）
 watch([() => records.value.length, () => records.value[records.value.length - 1]?.Messages?.length], () =>
   scrollToBottom(),
@@ -336,6 +343,14 @@ onMounted(async () => {
         </select>
 
         <div class="spacer" />
+        <button
+          class="ghost"
+          title="工作区：查看智能体产出的文件"
+          :disabled="!conversationId"
+          @click="openWorkspace()"
+        >
+          📁 工作区
+        </button>
         <button class="ghost" @click="agentPanelOpen = true">能力配置</button>
         <button class="ghost" :disabled="!conversationId || !records.length" @click="onShare">分享</button>
         <button v-if="!readonly" class="ghost" @click="newChat">新任务</button>
@@ -394,6 +409,9 @@ onMounted(async () => {
       :initial-tab="agentPanelTab"
       @close="agentPanelOpen = false"
     />
+
+    <!-- 右侧工作区：文件夹图标 / 消息内产物链接 / 产物卡片 共用 -->
+    <WorkspacePanel />
   </div>
 </template>
 
