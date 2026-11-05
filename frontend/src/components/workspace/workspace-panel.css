@@ -1,0 +1,71 @@
+.wsp-panel {
+  position: fixed;
+  top: 56px;
+  right: 12px;
+  bottom: 12px;
+  width: min(680px, calc(100vw - 40px));
+  background: #fff;
+  border: 1px solid #e2e7f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(31, 45, 71, 0.14);
+  display: flex;
+  flex-direction: column;
+  z-index: 60;
+  overflow: hidden;
+}
+.wsp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6e9ef;
+}
+.wsp-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2b3240;
+}
+.wsp-ico-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #5b6472;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.wsp-ico-btn:hover {
+  background: #f0f3f8;
+  color: #2b62d9;
+}
+.wsp-empty {
+  padding: 24px;
+  color: #9aa1ab;
+  font-size: 13px;
+  text-align: center;
+}
+.wsp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.wsp-tree-col {
+  flex: 0 0 230px;
+  border-right: 1px solid #e6e9ef;
+  overflow: auto;
+  padding: 8px 6px;
+}
+.wsp-body.wsp-no-preview .wsp-tree-col {
+  flex: 1;
+  border-right: none;
+}
+.wsp-preview-col {
+  flex: 1;
+  min-width: 0;
+}
+.wsp-hint {
+  color: #9aa1ab;
+  font-size: 12px;
+  padding: 10px 8px;
+}

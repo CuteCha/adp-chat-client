@@ -1,0 +1,42 @@
+.rec-record {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+}
+.rec-record.rec-user {
+  flex-direction: row-reverse;
+}
+.rec-avatar {
+  flex: 0 0 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #2b62d9;
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rec-bubble {
+  max-width: 78%;
+  background: #f3f7ff;
+  border: 1px solid #dbe6ff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+.rec-files {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rec-file-pill {
+  font-size: 12px;
+  background: #eef3ff;
+  border: 1px solid #dbe6ff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: #2b62d9;
+  text-decoration: none;
+}

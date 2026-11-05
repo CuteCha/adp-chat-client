@@ -7,8 +7,8 @@
  *   - tools：Agent.ToolList（含连接器下挂的 MCP 工具）
  * 三类都用同一个 InstalledItem 结构，渲染与插入 @ 的逻辑可以完全复用。
  */
-import { ref } from 'vue'
-import { describeAgent, ensureAgentId } from './useAgent'
+import { describeAgent, ensureAgentId } from './agent'
+import { createStore, useStoreVersion } from './store'
 
 export interface InstalledItem {
   id: string
@@ -29,11 +29,13 @@ interface CapabilitySet {
   connectors: InstalledItem[]
 }
 
+const store = createStore()
+
 /** 共享列表：@ 菜单 / 快选浮层读同一份 */
-const installedSkills = ref<InstalledItem[]>([])
-const installedTools = ref<InstalledItem[]>([])
-const installedConnectors = ref<InstalledItem[]>([])
-const loadingSkills = ref(false)
+let installedSkills: InstalledItem[] = []
+let installedTools: InstalledItem[] = []
+let installedConnectors: InstalledItem[] = []
+let loadingSkills = false
 
 const cache = new Map<string, CapabilitySet>()
 
@@ -81,15 +83,17 @@ function normalizeTools(tools: Record<string, any>[]): InstalledItem[] {
 }
 
 export async function loadInstalledSkills(applicationId: string): Promise<void> {
-  if (!applicationId || loadingSkills.value) return
+  if (!applicationId || loadingSkills) return
   const cached = cache.get(applicationId)
   if (cached) {
-    installedSkills.value = cached.skills
-    installedTools.value = cached.tools
-    installedConnectors.value = cached.connectors
+    installedSkills = cached.skills
+    installedTools = cached.tools
+    installedConnectors = cached.connectors
+    store.bump()
     return
   }
-  loadingSkills.value = true
+  loadingSkills = true
+  store.bump()
   try {
     const agentId = await ensureAgentId(applicationId)
     const detail = await describeAgent(applicationId, agentId)
@@ -99,13 +103,14 @@ export async function loadInstalledSkills(applicationId: string): Promise<void> 
       connectors: normalizeConnectors(detail.plugins ?? []),
     }
     cache.set(applicationId, next)
-    installedSkills.value = next.skills
-    installedTools.value = next.tools
-    installedConnectors.value = next.connectors
+    installedSkills = next.skills
+    installedTools = next.tools
+    installedConnectors = next.connectors
   } catch (e) {
-    console.error('[useInstalledSkills] load failed', e)
+    console.error('[installedSkills] load failed', e)
   } finally {
-    loadingSkills.value = false
+    loadingSkills = false
+    store.bump()
   }
 }
 
@@ -116,6 +121,7 @@ export function invalidateInstalledSkills(applicationId?: string): void {
 }
 
 export function useInstalledSkills() {
+  useStoreVersion(store)
   return {
     installedSkills,
     installedTools,

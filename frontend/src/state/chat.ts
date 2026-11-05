@@ -11,7 +11,6 @@
  *   文本 / 附件（file content） / 反问澄清提交（questionnaire content）
  */
 
-import { computed, reactive, ref } from 'vue'
 import type {
   Content,
   Questionnaire,
@@ -20,10 +19,10 @@ import type {
   SseEvent,
 } from '../sse/types'
 import { applySseEventToRecord } from '../utils/mergeRecord'
-import { pickQuestionnaireContent } from '../utils/questionnaire'
+import { buildQuestionnairePayload, pickQuestionnaireContent } from '../utils/questionnaire'
 import { fetchSSE } from '../sse/fetchSSE'
-import { sendMessage, fetchMessages } from '../api'
-import { buildQuestionnairePayload } from '../utils/questionnaire'
+import { fetchMessages, sendMessage } from '../api'
+import { createStore, useStoreVersion } from './store'
 
 const PLACEHOLDER_USER = 'placeholder-user'
 
@@ -53,7 +52,8 @@ interface ConvState {
 }
 
 /** 会话 Id → 状态；新任务在会话 Id 落位前用 pending-N 作为 key */
-const states = reactive<Record<string, ConvState>>({})
+const states: Record<string, ConvState> = {}
+const store = createStore()
 
 let pendingSeq = 0
 
@@ -61,9 +61,7 @@ function createState(): ConvState {
   return { records: [], questionnaire: {}, controller: null, streaming: false, awaitingClarify: false }
 }
 
-/** 写入路径：不存在则创建。
- *  注意必须返回容器里存的那份（reactive 代理），
- *  否则拿到的是原始对象，改 records 不会触发渲染。 */
+/** 写入路径：不存在则创建 */
 function getState(key: string): ConvState {
   const existing = states[key]
   if (existing) return existing
@@ -71,7 +69,7 @@ function getState(key: string): ConvState {
   return states[key]
 }
 
-/** 只读路径（computed 里用，避免读取时产生写入副作用） */
+/** 只读路径（读取时不要产生写入副作用） */
 function peekState(key: string): ConvState | undefined {
   return states[key]
 }
@@ -82,45 +80,54 @@ function realId(key: string): string {
 }
 
 /** 当前查看的会话 key（pending key 或真实会话 Id） */
-const activeKey = ref(`pending-${++pendingSeq}`)
+let activeKey = `pending-${++pendingSeq}`
 /** 分享视图：非 null 时整屏只读展示该快照 */
-const shareRecords = ref<RecordV2[] | null>(null)
+let shareRecords: RecordV2[] | null = null
 
-const error = ref('')
+let error = ''
 /** 新建会话 / 会话活跃时间变化时自增，侧栏据此刷新列表 */
-const conversationVersion = ref(0)
+let conversationVersion = 0
 
 // ---------------------------------------------------------------------------
 // 对外派生：当前查看会话的渲染源
 // ---------------------------------------------------------------------------
 
-const records = computed<RecordV2[]>(() =>
-  shareRecords.value ? shareRecords.value : peekState(activeKey.value)?.records ?? [],
-)
+function currentRecords(): RecordV2[] {
+  return shareRecords ? shareRecords : peekState(activeKey)?.records ?? []
+}
 /** 当前查看会话的真实会话 Id；新任务未落位 / 分享视图为 '' */
-const conversationId = computed(() => (shareRecords.value ? '' : realId(activeKey.value)))
-/** 当前查看会话是否在流式输出 */
-const streaming = computed(() => !shareRecords.value && !!peekState(activeKey.value)?.streaming)
+function currentConversationId(): string {
+  return shareRecords ? '' : realId(activeKey)
+}
+function isStreaming(): boolean {
+  return !shareRecords && !!peekState(activeKey)?.streaming
+}
 /** 所有正在流式的会话 Id（含后台）→ 侧栏转圈 */
-const streamingIds = computed(() =>
-  Object.entries(states)
+function currentStreamingIds(): string[] {
+  return Object.entries(states)
     .filter(([, s]) => s.streaming)
     .map(([k]) => realId(k))
-    .filter(Boolean),
-)
+    .filter(Boolean)
+}
 /** 仍在"进行中"的会话（流式中 或 等待用户澄清）→ 侧栏转圈保持 */
-const activeIds = computed(() =>
-  Object.entries(states)
+function currentActiveIds(): string[] {
+  return Object.entries(states)
     .filter(([, s]) => s.streaming || s.awaitingClarify)
     .map(([k]) => realId(k))
-    .filter(Boolean),
-)
-const questionnaireState = computed(() => peekState(activeKey.value)?.questionnaire ?? {})
+    .filter(Boolean)
+}
+function currentQuestionnaireState(): ConvState['questionnaire'] {
+  return peekState(activeKey)?.questionnaire ?? {}
+}
 
 /** 会话 Id 落位回调（新任务的首条消息触发），参数：(真实会话Id, 发起时的 key) */
 const newConversationHandlers: Array<(id: string, key: string) => void> = []
-function onNewConversation(handler: (id: string, key: string) => void): void {
+export function onNewConversation(handler: (id: string, key: string) => void): () => void {
   newConversationHandlers.push(handler)
+  return () => {
+    const index = newConversationHandlers.indexOf(handler)
+    if (index >= 0) newConversationHandlers.splice(index, 1)
+  }
 }
 
 function upsert(state: ConvState, record: RecordV2) {
@@ -145,10 +152,10 @@ function handleEvent(event: SseEvent, ctx: StreamCtx) {
       if (event.Payload.IsNewConversation && key !== newId) {
         states[newId] = state
         delete states[key]
-        if (activeKey.value === key) activeKey.value = newId
+        if (activeKey === key) activeKey = newId
         ctx.key = newId // 后续事件跟随真实会话 Id
         newConversationHandlers.forEach((fn) => fn(newId, key))
-        conversationVersion.value++ // 侧栏刷新出新会话
+        conversationVersion++ // 侧栏刷新出新会话
       }
       return
     }
@@ -181,10 +188,10 @@ function handleEvent(event: SseEvent, ctx: StreamCtx) {
 }
 
 /** 所有上行的统一出口（key 缺省 = 当前查看的会话） */
-async function sendContents(contents: OutgoingContent[], key = activeKey.value) {
+async function sendContents(contents: OutgoingContent[], key = activeKey) {
   const state = getState(key)
   if (state.streaming) return
-  error.value = ''
+  error = ''
 
   if (contents.some((c) => c.Type === 'text' || c.Type === 'file')) {
     state.records.push({
@@ -208,6 +215,8 @@ async function sendContents(contents: OutgoingContent[], key = activeKey.value) 
   state.streaming = true
   const controller = new AbortController()
   state.controller = controller
+  store.bump()
+
   const ctx: StreamCtx = { currentRecordId: '', key }
 
   await fetchSSE(
@@ -217,11 +226,15 @@ async function sendContents(contents: OutgoingContent[], key = activeKey.value) 
         controller.signal,
       ),
     {
-      success: (event) => handleEvent(event, ctx),
+      success: (event) => {
+        handleEvent(event, ctx)
+        store.bump()
+      },
       fail: (msg) => {
         // abort 属于用户主动停止，不算错误
         if (controller.signal.aborted) return
-        error.value = typeof msg === 'string' ? msg : '对话失败'
+        error = typeof msg === 'string' ? msg : '对话失败'
+        store.bump()
       },
       complete: () => {
         // 会话 Id 可能已在流中途落位，用最终 key 收尾
@@ -236,14 +249,15 @@ async function sendContents(contents: OutgoingContent[], key = activeKey.value) 
           (last.Messages ?? []).some((m) => !!pickQuestionnaireContent(m.Contents)) &&
           !finalState.questionnaire[last.RecordId]?.submitted
         // 后台会话完成时也刷新侧栏（活跃时间 / 后端标题）
-        conversationVersion.value++
+        conversationVersion++
+        store.bump()
       },
     },
   )
 }
 
 function send(text: string, files: AttachedFile[] = []) {
-  const key = activeKey.value
+  const key = activeKey
   const state = getState(key)
   if (state.streaming || (!text.trim() && !files.length)) return Promise.resolve()
   const contents: OutgoingContent[] = [{ Type: 'text', Text: text }]
@@ -263,75 +277,100 @@ function send(text: string, files: AttachedFile[] = []) {
 }
 
 /** 澄清提交：上行 questionnaire content（跳过则是纯文本「跳过」） */
-async function submitQuestionnaire(raw: Questionnaire, answers: QuestionnaireAnswer[], recordId: string) {
-  const key = activeKey.value
+async function submitQuestionnaire(
+  raw: Questionnaire,
+  answers: QuestionnaireAnswer[],
+  recordId: string,
+) {
+  const key = activeKey
   const state = getState(key)
   state.awaitingClarify = false
   state.questionnaire = {
     ...state.questionnaire,
     [recordId]: { submitted: true, answers },
   }
+  store.bump()
   await sendContents([{ Type: 'questionnaire', Questionnaire: buildQuestionnairePayload(raw, answers) }], key)
 }
 
 async function skipQuestionnaire(recordId: string) {
-  const key = activeKey.value
+  const key = activeKey
   const state = getState(key)
   state.awaitingClarify = false
   state.questionnaire = {
     ...state.questionnaire,
     [recordId]: { submitted: true, answers: null },
   }
+  store.bump()
   await send('跳过')
 }
 
 /** 仅停止当前查看会话的任务；后台会话不受影响 */
 function stop() {
-  const state = getState(activeKey.value)
+  const state = getState(activeKey)
   state.controller?.abort()
   state.controller = null
   state.streaming = false
+  store.bump()
 }
 
 async function loadHistory(id: string) {
   // 切换会话绝不停掉正在跑的任务：只切换视图
-  shareRecords.value = null
-  activeKey.value = id
-  error.value = ''
+  shareRecords = null
+  activeKey = id
+  error = ''
   const state = getState(id)
   // 已在内存（含后台流式中的会话）→ 直接展示实时 records，不重拉
-  if (state.records.length || state.streaming) return
+  if (state.records.length || state.streaming) {
+    store.bump()
+    return
+  }
+  store.bump()
   try {
     const data = await fetchMessages(id)
     state.records = data.Records ?? []
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '历史消息加载失败'
+    error = e instanceof Error ? e.message : '历史消息加载失败'
   }
+  store.bump()
 }
 
 function newChat() {
   // 不 stop()：旧会话的任务继续在后台执行
-  shareRecords.value = null
-  activeKey.value = `pending-${++pendingSeq}`
-  error.value = ''
+  shareRecords = null
+  activeKey = `pending-${++pendingSeq}`
+  error = ''
+  store.bump()
 }
 
 /** 分享视图：整屏只读快照 */
 function openShareView(list: RecordV2[]) {
-  shareRecords.value = list
+  shareRecords = list
+  store.bump()
 }
 
+export function setChatError(message: string): void {
+  error = message
+  store.bump()
+}
+
+export function getActiveKey(): string {
+  return activeKey
+}
+
+/** 宿主的对话状态（组件内使用） */
 export function useChat() {
+  useStoreVersion(store)
   return {
-    records,
-    conversationId,
+    records: currentRecords(),
+    conversationId: currentConversationId(),
     activeKey,
-    streaming,
-    streamingIds,
-    activeIds,
+    streaming: isStreaming(),
+    streamingIds: currentStreamingIds(),
+    activeIds: currentActiveIds(),
     error,
     conversationVersion,
-    questionnaireState,
+    questionnaireState: currentQuestionnaireState(),
     send,
     sendContents,
     submitQuestionnaire,
@@ -340,6 +379,5 @@ export function useChat() {
     loadHistory,
     newChat,
     openShareView,
-    onNewConversation,
   }
 }

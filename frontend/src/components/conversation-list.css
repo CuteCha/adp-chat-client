@@ -1,0 +1,80 @@
+.conv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+}
+.conv-new {
+  border: 1px dashed #c9d2e0;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  color: #2b62d9;
+}
+.conv-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.conv-item:hover {
+  background: #eef1f6;
+}
+.conv-item.conv-active {
+  background: #e4ecff;
+}
+.conv-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.conv-title {
+  font-size: 13px;
+  color: #2b3240;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.conv-spinner {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #d9e2ef;
+  border-top-color: #34a853;
+  border-radius: 50%;
+  animation: conv-spin 0.8s linear infinite;
+}
+@keyframes conv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.conv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.conv-time {
+  font-size: 11px;
+  color: #9aa1ab;
+}
+.conv-del {
+  border: none;
+  background: transparent;
+  color: #b0b6c0;
+  cursor: pointer;
+  font-size: 11px;
+}
+.conv-del:hover {
+  color: #d93026;
+}
+.conv-empty {
+  color: #9aa1ab;
+  font-size: 12px;
+  text-align: center;
+  padding: 12px 0;
+}

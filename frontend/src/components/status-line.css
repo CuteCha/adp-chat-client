@@ -1,0 +1,22 @@
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9aa1ab;
+  font-size: 13px;
+  padding: 2px 0;
+}
+.status-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid #d9e2ef;
+  border-top-color: #34a853;
+  border-radius: 50%;
+  animation: status-spin 0.9s linear infinite;
+}
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

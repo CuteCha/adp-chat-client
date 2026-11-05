@@ -1,0 +1,53 @@
+.mc-msg {
+  margin: 8px 0;
+}
+.mc-collapse-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #5b6472;
+  padding: 2px 0;
+}
+.mc-collapse-head:hover {
+  color: #2b62d9;
+}
+.mc-arrow {
+  font-size: 10px;
+}
+.mc-mini-spin {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 2px solid #d9e2ef;
+  border-top-color: #34a853;
+  border-radius: 50%;
+  animation: mc-spin 0.9s linear infinite;
+}
+@keyframes mc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mc-running-line {
+  margin: 2px 0 2px 14px;
+}
+.mc-status {
+  color: #9aa1ab;
+  font-size: 12px;
+}
+.mc-status.mc-done {
+  color: #7cb342;
+}
+.mc-collapse-body {
+  padding: 6px 0 6px 14px;
+  border-left: 2px solid #e6e9ef;
+  margin-left: 4px;
+}
+.mc-placeholder {
+  color: #9aa1ab;
+  font-size: 13px;
+}

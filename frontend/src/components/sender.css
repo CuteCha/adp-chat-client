@@ -1,0 +1,284 @@
+.snd-wrap {
+  padding: 4px 16px 14px;
+  background: #fff;
+}
+.snd-card {
+  position: relative;
+  border: 1px solid #e3e6ec;
+  border-radius: 14px;
+  padding: 10px 12px 8px;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.snd-card:focus-within {
+  border-color: #2b62d9;
+}
+.snd-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  resize: none;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 2px 2px 6px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+.snd-textarea::placeholder {
+  color: #a8afba;
+}
+.snd-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.snd-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.snd-cap {
+  border: none;
+  background: transparent;
+  color: #5b6472;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.snd-cap:hover {
+  background: #f2f4f8;
+  color: #2b3240;
+}
+.snd-cap:disabled {
+  color: #b0b6c0;
+  cursor: not-allowed;
+}
+.snd-cap.snd-on {
+  background: #eef3ff;
+  color: #2b62d9;
+}
+
+/* ---------- @ 菜单 / Skills 快选浮层（对齐官方：图标 + 名称 + 管理） ---------- */
+.snd-pop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+}
+.snd-mention-side,
+.snd-mention-sub,
+.snd-picker-pop {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  left: 0;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid #e3e6ec;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+}
+/* @ 两层菜单：两个独立浮层，高度各自随内容 */
+.snd-mention-side {
+  width: 132px;
+  padding: 4px;
+}
+.snd-mention-sub {
+  left: 140px;
+  min-width: 240px;
+  max-width: 380px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.snd-mp-cat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #2b3240;
+}
+.snd-mp-cat:hover {
+  background: #f2f4f8;
+}
+.snd-mp-cat.snd-on {
+  background: #eef3ff;
+  color: #2b62d9;
+}
+.snd-mp-cat:disabled {
+  color: #b0b6c0;
+  cursor: not-allowed;
+}
+.snd-mp-cat-label {
+  flex: 1;
+  text-align: left;
+}
+.snd-mp-arrow {
+  color: #a8afba;
+}
+.snd-picker-pop {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+}
+.snd-pop-search {
+  margin: 8px;
+  border: 1px solid #e3e6ec;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.snd-pop-search:focus {
+  border-color: #2b62d9;
+}
+.snd-pop-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 4px 4px;
+}
+.snd-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #2b3240;
+}
+.snd-pop-item.snd-active,
+.snd-pop-item:hover {
+  background: #f2f5fb;
+}
+.snd-pop-ico {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+.snd-pop-ico.snd-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef3ff;
+  color: #2b62d9;
+  font-size: 11px;
+}
+.snd-pop-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.snd-pop-empty {
+  padding: 14px 10px;
+  font-size: 12px;
+  color: #9aa1ab;
+  text-align: center;
+}
+.snd-pop-manage {
+  border: none;
+  border-top: 1px solid #f0f2f6;
+  background: #fff;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #5b6472;
+  cursor: pointer;
+  text-align: left;
+}
+.snd-pop-manage:hover {
+  background: #f7f9fc;
+  color: #2b62d9;
+}
+.snd-ico {
+  font-size: 12px;
+  color: #8a93a3;
+}
+.snd-ico.snd-plus {
+  font-size: 16px;
+  line-height: 1;
+}
+.snd-round {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.snd-round.snd-send {
+  background: #2b62d9;
+  color: #fff;
+}
+.snd-round.snd-send:disabled {
+  background: #e3e6ec;
+  color: #fff;
+  cursor: not-allowed;
+}
+.snd-round.snd-stop {
+  background: #2b62d9;
+  color: #fff;
+  font-size: 11px;
+}
+.snd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.snd-upload-error {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border: 1px solid #ffd7d5;
+  background: #fff5f5;
+  border-radius: 8px;
+  color: #c0392b;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.snd-chip {
+  font-size: 12px;
+  background: #eef3ff;
+  border: 1px solid #dbe6ff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: #2b62d9;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.snd-chip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #5b6472;
+}

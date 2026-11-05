@@ -1,0 +1,129 @@
+.qc-clarity {
+  margin: 8px 0;
+  border: 1px solid #e4e8f0;
+  border-radius: 10px;
+  background: #fbfcfe;
+  overflow: hidden;
+}
+.qc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef1f6;
+  font-size: 13px;
+}
+.qc-title {
+  font-weight: 600;
+}
+.qc-count {
+  color: #7a8290;
+}
+.qc-link {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #2b62d9;
+  cursor: pointer;
+  font-size: 12px;
+}
+.qc-body {
+  padding: 10px 12px;
+}
+.qc-q {
+  margin-bottom: 12px;
+}
+.qc-q-title {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.qc-req {
+  color: #d93026;
+}
+.qc-tag {
+  margin-left: 6px;
+  font-size: 11px;
+  background: #eef1f6;
+  color: #5b6472;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+.qc-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qc-opt {
+  border: 1px solid #dfe3ea;
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.qc-opt.qc-active {
+  border-color: #2b62d9;
+  background: #f3f7ff;
+  color: #2b62d9;
+}
+.qc-opt-desc {
+  display: block;
+  font-size: 11px;
+  color: #9aa1ab;
+}
+.qc-other-input {
+  margin-top: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dfe3ea;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+}
+.qc-actions {
+  display: flex;
+  gap: 10px;
+}
+.qc-primary {
+  background: #2b62d9;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
+.qc-primary:disabled {
+  background: #c3cbd8;
+  cursor: not-allowed;
+}
+.qc-ghost {
+  background: #fff;
+  border: 1px solid #dfe3ea;
+  border-radius: 6px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
+.qc-summary {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.qc-summary li {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+}
+.qc-summary-q {
+  color: #5b6472;
+  flex: 0 0 auto;
+  max-width: 60%;
+}
+.qc-summary-a {
+  color: #2b62d9;
+}
+.qc-expired-tip {
+  color: #9aa1ab;
+  font-size: 12px;
+}

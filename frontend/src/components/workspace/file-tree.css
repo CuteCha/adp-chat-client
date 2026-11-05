@@ -1,0 +1,47 @@
+.ft-tree {
+  font-size: 13px;
+}
+.ft-sub {
+  padding-left: 14px;
+}
+.ft-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #37414f;
+  white-space: nowrap;
+}
+.ft-row:hover {
+  background: #f0f3f8;
+}
+.ft-row.ft-active {
+  background: #e8effc;
+  color: #2b62d9;
+}
+.ft-tw {
+  flex: 0 0 10px;
+  font-size: 10px;
+  color: #9aa1ab;
+  transition: transform 0.15s;
+}
+.ft-tw.ft-open {
+  transform: rotate(90deg);
+}
+.ft-ico {
+  font-size: 12px;
+}
+.ft-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ft-hint {
+  color: #9aa1ab;
+  font-size: 12px;
+  padding: 6px;
+}
+.ft-hint.ft-err {
+  color: #d64541;
+}

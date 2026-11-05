@@ -1,0 +1,5 @@
+.markdown-body a {
+  color: #2b62d9;
+  text-decoration: underline;
+  cursor: pointer;
+}

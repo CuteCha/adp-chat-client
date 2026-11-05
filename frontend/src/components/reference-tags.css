@@ -1,0 +1,49 @@
+.refs {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.refs-title {
+  color: #8a8f99;
+  margin-right: 6px;
+}
+.ref-tag {
+  display: inline-block;
+  margin-right: 6px;
+  background: #f2f4f7;
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: #3b6fd4;
+  text-decoration: none;
+}
+.ref-link {
+  border: none;
+  background: none;
+  color: #2b62d9;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+.ref-detail {
+  margin-top: 8px;
+  border: 1px solid #eceef2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fafbfc;
+}
+.ref-detail-item {
+  padding: 4px 0;
+  border-bottom: 1px dashed #eceef2;
+}
+.ref-detail-item:last-child {
+  border-bottom: none;
+}
+.ref-detail-title {
+  color: #5b6472;
+}
+.ref-detail-text {
+  color: #7a8290;
+  white-space: pre-wrap;
+}
+.ref-tip {
+  color: #9aa1ab;
+}

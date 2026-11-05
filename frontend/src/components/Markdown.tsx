@@ -1,17 +1,17 @@
-<script setup lang="ts">
-/** Markdown 渲染：markdown-it + katex + highlight.js + DOMPurify。
+/**
+ * Markdown 渲染：markdown-it + katex + highlight.js + DOMPurify。
  * 流式期间是「全量重渲染」，同步渲染比组件树 diff 更稳，且与线上表现一致。
- * 正文里的 /workdir/... 文件链接被拦截为「预览」交互而不是导航。 */
-import { computed } from 'vue'
+ * 正文里的 /workdir/... 文件链接被拦截为「预览」交互而不是导航。
+ */
+import { useMemo, type MouseEvent } from 'react'
 import MarkdownIt from 'markdown-it'
 import { katex } from '@mdit/plugin-katex'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/common'
-import { previewFile } from '../composables/useWorkspace'
+import { previewFile } from '../state/workspace'
 import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github.css'
-
-const props = defineProps<{ source: string }>()
+import './markdown.css'
 
 const md = new MarkdownIt({
   html: true,
@@ -29,8 +29,6 @@ const md = new MarkdownIt({
     return `<pre class="hljs"><code>${md.utils.escapeHtml(code)}</code></pre>`
   },
 }).use(katex)
-
-const html = computed(() => DOMPurify.sanitize(md.render(linkifyWorkdir(props.source || ''))))
 
 /**
  * 正文里的 /workdir/... 产物路径未必是 markdown 链接（上游常写成纯文本或
@@ -82,7 +80,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 })
 
 /** 点击消息里的 /workdir/... 链接 → 打开右侧工作区预览（不导航） */
-function onClick(e: MouseEvent) {
+function handleClick(e: MouseEvent<HTMLDivElement>) {
   const el = (e.target as HTMLElement | null)?.closest?.('a')
   if (!el) return
   const href = el.getAttribute('href') ?? ''
@@ -96,16 +94,17 @@ function onClick(e: MouseEvent) {
   e.preventDefault()
   previewFile(path.slice(path.indexOf('/workdir/')))
 }
-</script>
 
-<template>
-  <div class="markdown-body" v-html="html" @click="onClick" />
-</template>
-
-<style scoped>
-.markdown-body :deep(a) {
-  color: #2b62d9;
-  text-decoration: underline;
-  cursor: pointer;
+export default function Markdown({ source }: { source: string }) {
+  const html = useMemo(
+    () => DOMPurify.sanitize(md.render(linkifyWorkdir(source || ''))),
+    [source],
+  )
+  return (
+    <div
+      className="markdown-body"
+      onClick={handleClick}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
 }
-</style>

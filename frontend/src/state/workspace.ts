@@ -4,10 +4,10 @@
  * 上下文（applicationId / conversationId）由 App 层统一注入，
  * Markdown、卡片等深层组件只需拿 path 调 previewFile 即可。
  */
-import { reactive } from 'vue'
+import { createStore, useStoreVersion } from './store'
 import { getWorkspaceId } from '../api'
 
-interface WorkspaceState {
+export interface WorkspaceState {
   open: boolean
   applicationId: string
   conversationId: string
@@ -17,25 +17,31 @@ interface WorkspaceState {
   version: number
 }
 
-const state = reactive<WorkspaceState>({
+const store = createStore()
+
+const state: WorkspaceState = {
   open: false,
   applicationId: '',
   conversationId: '',
   previewPath: '',
   version: 0,
-})
+}
 
 /** WorkspaceId 缓存（会话维度），拿不到时为空串——下载/预览接口不传也能工作 */
 const workspaceIdCache = new Map<string, Promise<string>>()
 
-export function useWorkspace() {
+/** 组件内读取工作区状态（订阅变更） */
+export function useWorkspace(): WorkspaceState {
+  useStoreVersion(store)
   return state
 }
 
 /** App 层注入当前上下文（应用 / 会话变化时调用） */
 export function setWorkspaceContext(applicationId: string, conversationId: string): void {
+  if (state.applicationId === applicationId && state.conversationId === conversationId) return
   state.applicationId = applicationId
   state.conversationId = conversationId
+  store.bump()
 }
 
 /** 打开右侧工作区面板（可带初始预览文件） */
@@ -43,6 +49,7 @@ export function openWorkspace(path = ''): void {
   state.previewPath = path
   state.version++
   state.open = true
+  store.bump()
 }
 
 /** 在面板中预览指定文件；面板未开则先打开 */
@@ -53,11 +60,20 @@ export function previewFile(path: string): void {
   }
   state.previewPath = path
   state.version++
+  store.bump()
+}
+
+/** 选中文件（不改变开关状态） */
+export function selectWorkspaceFile(path: string): void {
+  state.previewPath = path
+  state.version++
+  store.bump()
 }
 
 export function closeWorkspace(): void {
   state.open = false
   state.previewPath = ''
+  store.bump()
 }
 
 /** 懒取 WorkspaceId（带缓存与并发去重）；失败返回空串，不阻塞下载 */

@@ -1,0 +1,97 @@
+.ag-record {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+}
+.ag-avatar {
+  flex: 0 0 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #eef1f6;
+  color: #5b6472;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ag-bubble {
+  max-width: 78%;
+  background: #fff;
+  border: 1px solid #eceef2;
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+.ag-feedback {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.ag-run-hint {
+  margin-left: 6px;
+}
+.ag-done-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  color: #5b6472;
+  font-size: 12px;
+}
+.ag-done-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: #34a853;
+}
+.ag-feedback button {
+  border: 1px solid #eceef2;
+  background: #fff;
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ag-feedback button.ag-on {
+  border-color: #2b62d9;
+  background: #f3f7ff;
+  color: #2b62d9;
+}
+.ag-feedback button .ag-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+  color: #5b6472;
+}
+.ag-feedback button.ag-on .ag-icon {
+  color: #2b62d9;
+}
+.ag-wait-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+  color: #9aa1ab;
+  font-size: 13px;
+}
+.ag-wait-spin {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid #d9e2ef;
+  border-top-color: #34a853;
+  border-radius: 50%;
+  animation: ag-spin 0.9s linear infinite;
+}
+@keyframes ag-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ag-failed {
+  margin-top: 6px;
+  color: #d93026;
+  font-size: 13px;
+}
