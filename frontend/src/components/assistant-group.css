@@ -14,12 +14,9 @@
   align-items: center;
   justify-content: center;
 }
+/* AI 回答不加气泡框（对齐元宝样式）：正文直接铺在页面上 */
 .ag-bubble {
   max-width: 78%;
-  background: #fff;
-  border: 1px solid #eceef2;
-  border-radius: 10px;
-  padding: 10px 14px;
   min-width: 0;
 }
 .ag-feedback {

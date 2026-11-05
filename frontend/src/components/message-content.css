@@ -9,7 +9,7 @@
   border: none;
   cursor: pointer;
   font-size: 13px;
-  color: #5b6472;
+  color: #a2a8b2;
   padding: 2px 0;
 }
 .mc-collapse-head:hover {
@@ -36,16 +36,22 @@
   margin: 2px 0 2px 14px;
 }
 .mc-status {
-  color: #9aa1ab;
+  color: #b0b5bd;
   font-size: 12px;
 }
 .mc-status.mc-done {
-  color: #7cb342;
+  color: #b0b5bd;
 }
+/* 展开后的思考/工具正文字色同样调淡，对齐元宝"已深度思考"的浅灰观感 */
 .mc-collapse-body {
   padding: 6px 0 6px 14px;
-  border-left: 2px solid #e6e9ef;
+  border-left: 2px solid #eef0f3;
   margin-left: 4px;
+  color: #9aa1ab;
+}
+.mc-collapse-body .markdown-body strong,
+.mc-collapse-body .markdown-body blockquote {
+  color: #8b919b;
 }
 .mc-placeholder {
   color: #9aa1ab;
