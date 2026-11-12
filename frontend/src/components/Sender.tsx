@@ -30,6 +30,15 @@ const MENTION_GROUPS: { key: CapabilityKind; label: string }[] = [
 // 附件白名单 / 大小限制（对齐官方）：MIME 优先，浏览器识别不出时按扩展名兜底
 // ---------------------------------------------------------------------------
 
+const ZIP_MIME = 'application/zip'
+/** 各系统对 .zip 上报的 MIME 不一致（Windows 常见 x-zip-compressed，甚至为空） */
+const ZIP_MIME_ALIASES = new Set([
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/zip-compressed',
+  'multipart/x-zip',
+])
+
 const EXT_TO_MIME: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', bmp: 'image/bmp',
   webp: 'image/webp', gif: 'image/gif', tiff: 'image/tiff',
@@ -40,14 +49,16 @@ const EXT_TO_MIME: Record<string, string> = {
   xls: 'application/vnd.ms-excel',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json',
+  zip: ZIP_MIME,
 }
 const ALLOWED_TYPES = new Set(Object.values(EXT_TO_MIME))
 /** 文件选择框过滤 + 错误提示里展示的支持范围 */
 const FILE_ACCEPT = Object.keys(EXT_TO_MIME).map((e) => `.${e}`).join(',')
-/** 图片 10MB / 文档 15MB（与官方一致） */
-const FILE_SIZE_LIMITS: Record<'image' | 'document', number> = {
+/** 图片 10MB / 文档 15MB（与官方一致）/ 压缩包 50MB（整包通常比单个文档大） */
+const FILE_SIZE_LIMITS: Record<'image' | 'document' | 'archive', number> = {
   image: 10 * 1024 * 1024,
   document: 15 * 1024 * 1024,
+  archive: 50 * 1024 * 1024,
 }
 
 /**
@@ -57,8 +68,13 @@ const FILE_SIZE_LIMITS: Record<'image' | 'document', number> = {
  * 返回 '' 表示不支持。
  */
 function resolveMime(file: File): string {
-  if (file.type && ALLOWED_TYPES.has(file.type)) return file.type
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  const declared = (file.type || '').toLowerCase()
+  // zip 的 MIME 上报五花八门，统一收敛成 application/zip，
+  // 否则后端会把 x-zip-compressed 之类当成 FileType 透传给上游
+  if (ext === 'zip') return ZIP_MIME
+  if (ZIP_MIME_ALIASES.has(declared) && !EXT_TO_MIME[ext]) return ZIP_MIME
+  if (declared && ALLOWED_TYPES.has(declared)) return declared
   return EXT_TO_MIME[ext] ?? ''
 }
 
@@ -404,7 +420,9 @@ export default function Sender({
         showUploadError(`「${file.name}」格式不支持，支持：${FILE_ACCEPT}`)
         continue
       }
-      const limit = mime.startsWith('image/') ? FILE_SIZE_LIMITS.image : FILE_SIZE_LIMITS.document
+      const limit = mime === ZIP_MIME
+        ? FILE_SIZE_LIMITS.archive
+        : mime.startsWith('image/') ? FILE_SIZE_LIMITS.image : FILE_SIZE_LIMITS.document
       if (file.size > limit) {
         showUploadError(`「${file.name}」超过 ${formatSize(limit)} 大小限制`)
         continue
@@ -417,12 +435,15 @@ export default function Sender({
     for (const { file, mime } of valid) {
       try {
         const ext = file.name.split('.').pop() ?? ''
-        let uploaded = await uploadFile(file, applicationId, mode, mime)
+        // 压缩包不走 docParse（上游只解析文档/图片，zip 必然拿不到 doc_id）：
+        // 一次上传到公开桶，Agent 侧通过 URL 自行下载解压，避免重复上传与误导性降级提示
+        const isArchive = mime === ZIP_MIME
+        let uploaded = await uploadFile(file, applicationId, mode, mime, isArchive)
         let docId = '0'
         let parseFailed = false
-        // 2) 只有 standard 模式的非图片需要 docParse（claw 模式靠 URL 让 Agent 自己下载）
+        // 2) 只有 standard 模式的非图片、非压缩包需要 docParse（claw 模式靠 URL 让 Agent 自己下载）
         //    且必须带上上传时 COS 返回的 ETag，否则上游解析失败拿不到 doc_id
-        if (!mime.startsWith('image/') && mode === 'standard') {
+        if (!isArchive && !mime.startsWith('image/') && mode === 'standard') {
           try {
             const response = await parseFile({
               ApplicationId: applicationId,
@@ -496,7 +517,7 @@ export default function Sender({
           rows={1}
           disabled={disabled}
           value={text}
-          placeholder="支持上传图片 / PDF / Office 文档等提问，输入@唤起已安装的技能/工具/连接器"
+          placeholder="支持上传图片 / PDF / Office 文档 / ZIP 压缩包等提问，输入@唤起已安装的技能/工具/连接器"
           onKeyDown={onKeydown}
           onChange={onInput}
         />

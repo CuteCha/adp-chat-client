@@ -534,6 +534,11 @@ class TCADP:
             'text/markdown': 'md',
             'text/csv': 'csv',
             'application/json': 'json',
+            # 压缩包：各系统上报的 MIME 不一致，统一按扩展名 zip 申请存储凭证
+            'application/zip': 'zip',
+            'application/x-zip-compressed': 'zip',
+            'application/zip-compressed': 'zip',
+            'multipart/x-zip': 'zip',
         }
         if mime_type in mime_to_ext:
             return mime_to_ext[mime_type]

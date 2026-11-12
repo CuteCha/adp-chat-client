@@ -147,7 +147,7 @@ export default function FilePreview({
       {(kind === 'office' || kind === 'unknown') && (
         <div className="fp-body fp-center">
           <div className="fp-hint">
-            该格式暂不支持在线预览
+            {ext === 'zip' ? '压缩包暂不支持在线预览，可下载后解压查看' : '该格式暂不支持在线预览'}
             <button className="fp-dl" onClick={download}>
               下载查看
             </button>
