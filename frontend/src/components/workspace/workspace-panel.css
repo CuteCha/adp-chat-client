@@ -1,16 +1,12 @@
+/* 常驻右侧分区：宽度由 App 内联注入，靠分界线拖拽改变 */
 .wsp-panel {
-  position: fixed;
-  top: 56px;
-  right: 12px;
-  bottom: 12px;
-  width: min(680px, calc(100vw - 40px));
+  flex: 0 0 auto;
+  height: 100%;
+  min-width: 0;
   background: #fff;
-  border: 1px solid #e2e7f0;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(31, 45, 71, 0.14);
+  border-left: 1px solid #eceef2;
   display: flex;
   flex-direction: column;
-  z-index: 60;
   overflow: hidden;
 }
 .wsp-head {
@@ -45,20 +41,69 @@
   font-size: 13px;
   text-align: center;
 }
+.wsp-cols-closed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.wsp-empty-btn {
+  border: 1px solid #dfe3ea;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #2b62d9;
+  cursor: pointer;
+}
+.wsp-empty-btn:hover {
+  border-color: #b9cdfb;
+  background: #f5f8ff;
+}
 .wsp-body {
   flex: 1;
   min-height: 0;
   display: flex;
 }
 .wsp-tree-col {
-  flex: 0 0 230px;
+  /* 面板被拖窄时文件树同步收窄，预览列仍留得住内容 */
+  flex: 0 0 clamp(160px, 38%, 230px);
+  min-width: 0;
   border-right: 1px solid #e6e9ef;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wsp-col-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-bottom: 1px solid #f0f2f6;
+  font-size: 12px;
+  color: #9aa1ab;
+}
+.wsp-col-head .wsp-ico-btn {
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.wsp-tree-scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 8px 6px;
 }
+/* 预览列被单独收起 → 文件树占满整个工作区 */
 .wsp-body.wsp-no-preview .wsp-tree-col {
-  flex: 1;
+  flex: 1 1 auto;
   border-right: none;
+}
+/* 文件树列被单独收起 → 预览占满整个工作区 */
+.wsp-body.wsp-no-tree .wsp-preview-col {
+  flex: 1 1 auto;
 }
 .wsp-preview-col {
   flex: 1;

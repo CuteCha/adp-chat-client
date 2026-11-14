@@ -9,7 +9,9 @@ import StatusLine from './components/StatusLine'
 import Sender, { type PanelTab } from './components/Sender'
 import AgentPanel from './components/AgentPanel'
 import WorkspacePanel from './components/workspace/WorkspacePanel'
-import { openWorkspace, setWorkspaceContext } from './state/workspace'
+import SplitHandle from './components/SplitHandle'
+import { useSplitLayout } from './utils/useSplitLayout'
+import { closeWorkspace, openWorkspace, setWorkspaceContext, useWorkspace } from './state/workspace'
 import type { Questionnaire, QuestionnaireAnswer, Record as RecordV2 } from './sse/types'
 import { isUserRecordInvisible } from './utils/record'
 import { pickQuestionnaireContent } from './utils/questionnaire'
@@ -41,6 +43,24 @@ type DisplayItem =
 function deriveTitle(text: string): string {
   const t = text.trim().replace(/\s+/g, ' ')
   return t ? t.slice(0, 20) : '新任务'
+}
+
+/** 顶栏的侧栏开关图标：竖线在左=任务历史，在右=工作区 */
+function PanelIcon({ side }: { side: 'left' | 'right' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" />
+      <rect
+        x={side === 'left' ? 1.5 : 10.5}
+        y="2.5"
+        width={side === 'left' ? 4 : 4}
+        height="11"
+        fill="currentColor"
+        opacity="0.16"
+      />
+      <path d={side === 'left' ? 'M5.5 2.5V13.5' : 'M10.5 2.5V13.5'} stroke="currentColor" />
+    </svg>
+  )
 }
 
 /** 该会话是否已有用户真实输入（澄清回执不算） */
@@ -118,6 +138,18 @@ export default function App() {
   const scroller = useRef<HTMLDivElement | null>(null)
   const shareId = useRef(new URLSearchParams(location.search).get('share') ?? '').current
   const readonly = !!shareId
+
+  /** 工作区开关来自全局 store（消息内链接 / 产物卡片也会打开它） */
+  const workspace = useWorkspace()
+  const {
+    shellRef,
+    historyOpen,
+    toggleHistory,
+    historyWidth,
+    workspaceWidth,
+    startDrag,
+    stepWidth,
+  } = useSplitLayout(!readonly, workspace.open)
 
   function updateLocalTitles(next: Record<string, string>) {
     localTitlesRef.current = next
@@ -321,34 +353,47 @@ export default function App() {
   })()
 
   return (
-    <div className="app-shell">
-      {!readonly && (
-        <aside className="app-sidebar">
-          <div className="app-brand">ADP 调试台</div>
-          <ConversationList
-            items={conversations}
-            activeId={conversationId}
-            titles={localTitles}
-            streaming={streaming}
-            streamingIds={activeIds}
-            pendingTitle={pendingTitle}
-            activeStreamTitle={activePendingTitle}
-            onSelect={(id) => void handleLoadHistory(id)}
-            onCreate={newChat}
-            onDelete={(id) => {
-              void (async () => {
-                await deleteConversation(id)
-                if (id === conversationId) newChat()
-                await refreshConversations()
-              })()
-            }}
-          />
-        </aside>
+    <div className="app-shell" ref={shellRef}>
+      {!readonly && historyOpen && (
+        <>
+          <aside className="app-sidebar" style={{ width: historyWidth, flexBasis: historyWidth }}>
+            <div className="app-brand">ADP 调试台</div>
+            <ConversationList
+              items={conversations}
+              activeId={conversationId}
+              titles={localTitles}
+              streaming={streaming}
+              streamingIds={activeIds}
+              pendingTitle={pendingTitle}
+              activeStreamTitle={activePendingTitle}
+              onSelect={(id) => void handleLoadHistory(id)}
+              onCreate={newChat}
+              onDelete={(id) => {
+                void (async () => {
+                  await deleteConversation(id)
+                  if (id === conversationId) newChat()
+                  await refreshConversations()
+                })()
+              }}
+            />
+          </aside>
+          <SplitHandle side="history" onDrag={startDrag} onStep={stepWidth} />
+        </>
       )}
 
       <main className="app-main">
         <header className="app-topbar">
-          <span className="app-uid">
+          {!readonly && (
+            <button
+              className="app-icon-btn"
+              title={historyOpen ? '收起历史' : '展开历史'}
+              aria-label={historyOpen ? '收起历史' : '展开历史'}
+              onClick={toggleHistory}
+            >
+              <PanelIcon side="left" />
+            </button>
+          )}
+          <span className="app-uid" title="X-User-Id">
             X-User-Id
             <input
               value={userId}
@@ -375,12 +420,14 @@ export default function App() {
 
           <div className="app-spacer" />
           <button
-            className="app-ghost"
-            title="工作区：查看智能体产出的文件"
-            disabled={!conversationId}
-            onClick={() => openWorkspace()}
+            className={`app-ghost app-ws-toggle${workspace.open ? ' app-toggle-on' : ''}`}
+            title={workspace.open ? '收起工作区' : '展开工作区：查看智能体产出的文件'}
+            aria-pressed={workspace.open}
+            disabled={!conversationId && !workspace.open}
+            onClick={() => (workspace.open ? closeWorkspace() : openWorkspace())}
           >
-            📁 工作区
+            <PanelIcon side="right" />
+            工作区
           </button>
           <button className="app-ghost" onClick={() => setAgentPanelOpen(true)}>
             能力配置
@@ -467,8 +514,13 @@ export default function App() {
         />
       )}
 
-      {/* 右侧工作区：文件夹图标 / 消息内产物链接 / 产物卡片 共用 */}
-      <WorkspacePanel />
+      {/* 右侧常驻工作区分区：顶栏开关 / 消息内产物链接 / 产物卡片 共用 */}
+      {workspace.open && (
+        <>
+          <SplitHandle side="workspace" onDrag={startDrag} onStep={stepWidth} />
+          <WorkspacePanel width={workspaceWidth} />
+        </>
+      )}
     </div>
   )
 }

@@ -1,13 +1,16 @@
 .app-shell {
   display: flex;
+  width: 100%;
   height: 100vh;
+  overflow: hidden;
 }
 .app-sidebar {
-  width: 240px;
+  /* 宽度由 App 内联注入（可拖拽），这里只负责不参与伸缩 */
+  flex: 0 0 auto;
+  min-width: 0;
   border-right: 1px solid #eceef2;
   background: #fafbfc;
   overflow-y: auto;
-  flex: 0 0 240px;
 }
 .app-brand {
   padding: 14px 16px;
@@ -15,10 +18,94 @@
   border-bottom: 1px solid #eceef2;
 }
 .app-main {
-  flex: 1;
+  /* 两侧展开/折叠、宽度拖拽时中间区域自动占满剩余空间 */
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* 供顶栏按「中间区域实际宽度」做紧凑适配，而非按窗口宽度 */
+  container-type: inline-size;
+  container-name: appmain;
+}
+
+@container appmain (max-width: 560px) {
+  .app-topbar {
+    gap: 6px 8px;
+    padding: 7px 10px;
+  }
+  .app-uid {
+    font-size: 0;
+  }
+  .app-uid input {
+    width: 92px;
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+  .app-topbar select {
+    max-width: 116px;
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+  .app-badge {
+    display: none;
+  }
+  .app-ghost {
+    padding: 3px 8px;
+    font-size: 12px;
+  }
+  .app-icon-btn {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* 可拖拽分界线 */
+.app-resizer {
+  flex: 0 0 6px;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 2;
+  outline: none;
+}
+.app-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+.app-resizer:hover::after,
+.app-resizer:focus-visible::after,
+.app-dragging .app-resizer::after {
+  background: #b9cdfb;
+}
+body.app-dragging,
+body.app-dragging * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.app-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #5b6472;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.app-icon-btn:hover {
+  background: #f0f3f8;
+  color: #2b62d9;
 }
 .app-topbar {
   display: flex;
@@ -26,6 +113,13 @@
   gap: 10px;
   padding: 10px 16px;
   border-bottom: 1px solid #eceef2;
+  min-width: 0;
+  /* 中间区域被两侧挤窄时按钮换行，避免被横向裁掉 */
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+.app-topbar > * {
+  flex: 0 0 auto;
 }
 .app-uid input {
   width: 140px;
@@ -56,11 +150,25 @@
   color: #d93026;
 }
 .app-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid #dfe3ea;
   background: #fff;
   border-radius: 6px;
   padding: 4px 12px;
   cursor: pointer;
+  white-space: nowrap;
+  color: #2b3240;
+}
+.app-ghost:hover:not(:disabled) {
+  border-color: #b9cdfb;
+  color: #2b62d9;
+}
+.app-ghost.app-toggle-on {
+  background: #eaf1ff;
+  border-color: #b9cdfb;
+  color: #2b62d9;
 }
 .app-ghost:disabled {
   color: #9aa1ab;

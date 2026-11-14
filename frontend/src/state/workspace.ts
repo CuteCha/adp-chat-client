@@ -1,6 +1,6 @@
 /**
  * 工作区面板全局状态：消息内文件链接、产物卡片、顶部文件夹图标
- * 三个入口都通过 openWorkspace / previewFile 打开同一个右侧面板。
+ * 三个入口都通过 openWorkspace / previewFile 打开同一个右侧常驻分区（默认收起）。
  * 上下文（applicationId / conversationId）由 App 层统一注入，
  * Markdown、卡片等深层组件只需拿 path 调 previewFile 即可。
  */
@@ -15,6 +15,10 @@ export interface WorkspaceState {
   previewPath: string
   /** 预览版本号：同一路径重复点击时强制重新加载 */
   version: number
+  /** 文件树列表列是否显示（可单独收起） */
+  treeVisible: boolean
+  /** 文件预览列是否显示（可单独收起；未选中文件时该列天然不显示） */
+  previewVisible: boolean
 }
 
 const store = createStore()
@@ -25,6 +29,8 @@ const state: WorkspaceState = {
   conversationId: '',
   previewPath: '',
   version: 0,
+  treeVisible: true,
+  previewVisible: true,
 }
 
 /** WorkspaceId 缓存（会话维度），拿不到时为空串——下载/预览接口不传也能工作 */
@@ -44,15 +50,17 @@ export function setWorkspaceContext(applicationId: string, conversationId: strin
   store.bump()
 }
 
-/** 打开右侧工作区面板（可带初始预览文件） */
+/** 打开右侧工作区面板（可带初始预览文件）；重新打开时两列都恢复显示 */
 export function openWorkspace(path = ''): void {
   state.previewPath = path
   state.version++
   state.open = true
+  state.treeVisible = true
+  state.previewVisible = true
   store.bump()
 }
 
-/** 在面板中预览指定文件；面板未开则先打开 */
+/** 在面板中预览指定文件；面板未开则先打开，预览列被收起时自动展开 */
 export function previewFile(path: string): void {
   if (!state.open) {
     openWorkspace(path)
@@ -60,19 +68,30 @@ export function previewFile(path: string): void {
   }
   state.previewPath = path
   state.version++
+  state.previewVisible = true
   store.bump()
 }
 
-/** 选中文件（不改变开关状态） */
+/** 选中文件：预览列被收起时点文件会自动重新展开 */
 export function selectWorkspaceFile(path: string): void {
   state.previewPath = path
   state.version++
+  state.previewVisible = true
+  store.bump()
+}
+
+/** 单独收起 / 展开工作区里的某一列 */
+export function setWorkspaceColumnVisible(column: 'tree' | 'preview', visible: boolean): void {
+  if (column === 'tree') state.treeVisible = visible
+  else state.previewVisible = visible
   store.bump()
 }
 
 export function closeWorkspace(): void {
   state.open = false
   state.previewPath = ''
+  state.treeVisible = true
+  state.previewVisible = true
   store.bump()
 }
 

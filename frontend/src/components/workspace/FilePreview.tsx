@@ -29,12 +29,18 @@ export default function FilePreview({
   workspaceId,
   path,
   version,
+  onShowTree,
+  onClose,
 }: {
   applicationId: string
   workspaceId: string
   path: string
   /** 外部版本号变化时强制重新加载 */
   version?: number
+  /** 文件树列被收起时，提供「重新展开文件列表」入口 */
+  onShowTree?: () => void
+  /** 单独收起文件预览列 */
+  onClose?: () => void
 }) {
   const fileName = path.split('/').pop() || path
   const ext = (fileName.toLowerCase().match(/\.([a-z0-9]+)$/) ?? [])[1] ?? ''
@@ -106,12 +112,22 @@ export default function FilePreview({
   return (
     <div className="fp-wrap">
       <div className="fp-head">
+        {onShowTree && (
+          <button className="fp-btn" title="展开文件列表" onClick={onShowTree}>
+            ▤
+          </button>
+        )}
         <span className="fp-name" title={path}>
           {fileName}
         </span>
         <button className="fp-btn" title="下载" onClick={download}>
           ⬇
         </button>
+        {onClose && (
+          <button className="fp-btn" title="收起文件预览" onClick={onClose}>
+            ✕
+          </button>
+        )}
       </div>
 
       {kind === 'pdf' && (
