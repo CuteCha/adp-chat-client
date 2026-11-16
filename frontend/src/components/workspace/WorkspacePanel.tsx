@@ -1,7 +1,7 @@
 /** 右侧常驻工作区分区：文件树 + 预览（不是弹出抽屉）。
  *  宽度由 App 传入并可拖拽，默认收起；顶部开关 / 消息内文件链接 /
  *  产物卡片三个入口共用 workspace store 的同一个状态。
- *  内部两列（文件树列表 / 文件预览）可各自单独收起，收起后另一列占满。 */
+ *  两列各带自己的头部（无跨列全局顶栏）；两列都收起即关闭整个工作区。 */
 import { useEffect, useState } from 'react'
 import {
   closeWorkspace,
@@ -45,40 +45,42 @@ export default function WorkspacePanel({ width }: { width: number }) {
     void loadWorkspaceId()
   }
 
+  /** 收起某一列；若收起后一列都不剩，等同于收起（关闭）整个工作区 */
+  function hideTree() {
+    if (!showPreview) {
+      closeWorkspace()
+      return
+    }
+    setWorkspaceColumnVisible('tree', false)
+  }
+
+  function hidePreview() {
+    if (!showTree) {
+      closeWorkspace()
+      return
+    }
+    setWorkspaceColumnVisible('preview', false)
+  }
+
   if (!ws.open) return null
 
   return (
     <aside className="wsp-panel" style={{ width, flexBasis: width }}>
-      <header className="wsp-head">
-        {!showTree && (
-          <button
-            className="wsp-ico-btn"
-            title="展开文件列表"
-            onClick={() => setWorkspaceColumnVisible('tree', true)}
-          >
-            ▤
-          </button>
-        )}
-        {!showPreview && ws.previewPath && (
-          <button
-            className="wsp-ico-btn"
-            title="展开文件预览"
-            onClick={() => setWorkspaceColumnVisible('preview', true)}
-          >
-            ▥
-          </button>
-        )}
-        <span className="wsp-title">工作区</span>
-        <button className="wsp-ico-btn" title="刷新" onClick={refresh}>
-          ⟳
-        </button>
-        <button className="wsp-ico-btn" title="收起工作区" onClick={closeWorkspace}>
-          ✕
-        </button>
-      </header>
-
       {!hasContext ? (
-        <div className="wsp-empty">当前没有进行中的会话，无法读取工作区。</div>
+        <>
+          <div className="wsp-col-head">
+            <span className="wsp-col-title">工作区</span>
+            <div className="wsp-col-actions">
+              <button className="wsp-ico-btn wsp-refresh" title="刷新" onClick={refresh}>
+                ⟳
+              </button>
+              <button className="wsp-ico-btn" title="收起工作区" onClick={closeWorkspace}>
+                ✕
+              </button>
+            </div>
+          </div>
+          <div className="wsp-empty">当前没有进行中的会话，无法读取工作区。</div>
+        </>
       ) : (
         <div
           className={`wsp-body${showPreview ? '' : ' wsp-no-preview'}${showTree ? '' : ' wsp-no-tree'}`}
@@ -86,15 +88,30 @@ export default function WorkspacePanel({ width }: { width: number }) {
           {showTree && (
             <div className="wsp-tree-col">
               <div className="wsp-col-head">
-                <span>文件</span>
-                <button
-                  className="wsp-ico-btn"
-                  title="收起文件列表"
-                  onClick={() => setWorkspaceColumnVisible('tree', false)}
-                >
-                  ✕
-                </button>
+                <span className="wsp-col-title">工作区</span>
+                <div className="wsp-col-actions">
+                  {!showPreview && ws.previewPath && (
+                    <button
+                      className="wsp-ico-btn"
+                      title="展开文件预览"
+                      onClick={() => setWorkspaceColumnVisible('preview', true)}
+                    >
+                      ▥
+                    </button>
+                  )}
+                  <button className="wsp-ico-btn wsp-refresh" title="刷新" onClick={refresh}>
+                    ⟳
+                  </button>
+                  <button
+                    className="wsp-ico-btn"
+                    title={showPreview ? '收起文件列表' : '收起工作区'}
+                    onClick={hideTree}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
+              <div className="wsp-col-subhead">文件</div>
               <div className="wsp-tree-scroll">
                 {loadingWs ? (
                   <div className="wsp-hint">正在连接工作区…</div>
@@ -122,29 +139,11 @@ export default function WorkspacePanel({ width }: { width: number }) {
                 workspaceId={workspaceId}
                 path={ws.previewPath}
                 version={ws.version}
-                onShowTree={showTree ? undefined : () => setWorkspaceColumnVisible('tree', true)}
-                onClose={() => setWorkspaceColumnVisible('preview', false)}
+                treeVisible={showTree}
+                onToggleTree={() => setWorkspaceColumnVisible('tree', !showTree)}
+                onClose={hidePreview}
+                closeTitle={showTree ? '收起文件预览' : '收起工作区'}
               />
-            </div>
-          )}
-
-          {!showTree && !showPreview && (
-            <div className="wsp-empty wsp-cols-closed">
-              两列都已收起
-              <button
-                className="wsp-empty-btn"
-                onClick={() => setWorkspaceColumnVisible('tree', true)}
-              >
-                展开文件列表
-              </button>
-              {ws.previewPath && (
-                <button
-                  className="wsp-empty-btn"
-                  onClick={() => setWorkspaceColumnVisible('preview', true)}
-                >
-                  展开文件预览
-                </button>
-              )}
             </div>
           )}
         </div>

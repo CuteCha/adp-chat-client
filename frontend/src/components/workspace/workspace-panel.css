@@ -9,58 +9,66 @@
   flex-direction: column;
   overflow: hidden;
 }
-.wsp-head {
+/* 每列各自带头部（对齐 ADP）：不存在跨两列的全局顶栏 */
+.wsp-col-head {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px 0 14px;
   border-bottom: 1px solid #e6e9ef;
 }
-.wsp-title {
-  flex: 1;
+.wsp-col-title {
   font-size: 14px;
   font-weight: 600;
   color: #2b3240;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wsp-col-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .wsp-ico-btn {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1;
   color: #5b6472;
-  padding: 4px 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .wsp-ico-btn:hover {
   background: #f0f3f8;
   color: #2b62d9;
+}
+/* 刷新按钮位于文件列表列顶部，图标比其它按钮更大 */
+.wsp-refresh {
+  font-size: 21px;
+}
+.wsp-col-subhead {
+  flex: 0 0 auto;
+  padding: 14px 14px 6px;
+  font-size: 12px;
+  color: #9aa1ab;
 }
 .wsp-empty {
   padding: 24px;
   color: #9aa1ab;
   font-size: 13px;
   text-align: center;
-}
-.wsp-cols-closed {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-.wsp-empty-btn {
-  border: 1px solid #dfe3ea;
-  background: #fff;
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-size: 12px;
-  color: #2b62d9;
-  cursor: pointer;
-}
-.wsp-empty-btn:hover {
-  border-color: #b9cdfb;
-  background: #f5f8ff;
 }
 .wsp-body {
   flex: 1;
@@ -76,25 +84,11 @@
   flex-direction: column;
   overflow: hidden;
 }
-.wsp-col-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 8px;
-  border-bottom: 1px solid #f0f2f6;
-  font-size: 12px;
-  color: #9aa1ab;
-}
-.wsp-col-head .wsp-ico-btn {
-  font-size: 12px;
-  padding: 2px 4px;
-}
 .wsp-tree-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px 6px;
+  padding: 4px 6px 8px;
 }
 /* 预览列被单独收起 → 文件树占满整个工作区 */
 .wsp-body.wsp-no-preview .wsp-tree-col {

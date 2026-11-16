@@ -29,18 +29,23 @@ export default function FilePreview({
   workspaceId,
   path,
   version,
-  onShowTree,
+  treeVisible,
+  onToggleTree,
   onClose,
+  closeTitle,
 }: {
   applicationId: string
   workspaceId: string
   path: string
   /** 外部版本号变化时强制重新加载 */
   version?: number
-  /** 文件树列被收起时，提供「重新展开文件列表」入口 */
-  onShowTree?: () => void
+  /** 文件树列当前是否显示，决定左端面板按钮的文案/高亮 */
+  treeVisible?: boolean
+  /** 左端面板按钮：切换文件树列表列 */
+  onToggleTree?: () => void
   /** 单独收起文件预览列 */
   onClose?: () => void
+  closeTitle?: string
 }) {
   const fileName = path.split('/').pop() || path
   const ext = (fileName.toLowerCase().match(/\.([a-z0-9]+)$/) ?? [])[1] ?? ''
@@ -112,8 +117,12 @@ export default function FilePreview({
   return (
     <div className="fp-wrap">
       <div className="fp-head">
-        {onShowTree && (
-          <button className="fp-btn" title="展开文件列表" onClick={onShowTree}>
+        {onToggleTree && (
+          <button
+            className={`fp-btn fp-toggle${treeVisible ? '' : ' fp-btn-on'}`}
+            title={treeVisible ? '收起文件列表' : '展开文件列表'}
+            onClick={onToggleTree}
+          >
             ▤
           </button>
         )}
@@ -124,7 +133,7 @@ export default function FilePreview({
           ⬇
         </button>
         {onClose && (
-          <button className="fp-btn" title="收起文件预览" onClick={onClose}>
+          <button className="fp-btn" title={closeTitle ?? '收起文件预览'} onClick={onClose}>
             ✕
           </button>
         )}

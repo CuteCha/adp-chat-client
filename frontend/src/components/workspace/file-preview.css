@@ -4,11 +4,15 @@
   height: 100%;
   min-height: 0;
 }
+/* 与文件列表列头部等高，两级标题在同一水平线上 */
 .fp-head {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 0 10px;
   border-bottom: 1px solid #e6e9ef;
 }
 .fp-name {
@@ -21,13 +25,30 @@
   white-space: nowrap;
 }
 .fp-btn {
+  flex: 0 0 auto;
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1;
   color: #5b6472;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .fp-btn:hover {
+  background: #f0f3f8;
+  color: #2b62d9;
+}
+.fp-toggle {
+  font-size: 15px;
+}
+.fp-btn.fp-btn-on {
+  background: #eaf1ff;
   color: #2b62d9;
 }
 .fp-body {
