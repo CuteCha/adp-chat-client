@@ -52,21 +52,34 @@ function linkifyWorkdir(src: string): string {
       return `](${enc})`
     },
   )
+  // 上游也会把产物写成 agent.adp-cos.com 的预签名直链（带 q-sign-* 参数）：
+  //   [/workdir/output/x.html](https://agent.adp-cos.com/...&q-signature=...)
+  // 链接文字本身已是真实产物路径，把目标改回该路径即可——长签名 URL 不再展示，
+  // 点击仍走右侧工作区预览。非 /workdir 文字则直接去掉链接只保留文字。
+  const signedUrl = String.raw`https?:\/\/[^\s)]*(?:adp-cos\.com|[?&]q-sign-algorithm=)[^\s)]*`
+  src = src.replace(
+    new RegExp(`\\[([^\\]\\n]*)\\]\\(\\s*${signedUrl}\\s*\\)`, 'gi'),
+    (_, text: string) => {
+      const label = text.trim()
+      return label.startsWith('/workdir/') ? `[${label}](${label})` : label
+    },
+  )
+  // 裸的预签名直链（上游直接把 URL 写在正文里，linkify 会渲染成长蓝链）：删掉
+  src = src.replace(new RegExp(`(?<!\\]\\()${signedUrl}`, 'gi'), '')
   // 兜底：链接目标仍是沙箱 /files 直链（没有可解析的 path 参数）时，
   // 直接去掉链接只保留文字，避免把长 URL 展示出来
   src = src.replace(
     /\[([^\]\n]*)\]\(\s*https?:\/\/[^\s)]*\/files[^\s)]*\s*\)/gi,
     (_, text: string) => text,
   )
-  const parts = src.split(/(`[^`\n]*`|\]\([^)\n]*\))/g)
+  // 把完整 markdown 链接作为一个整体保护：否则链接文字里的 /workdir/...
+  // 会被再包一层 [path](path)，破坏 ](...) 结构，反而把 URL 暴露成裸链接
+  const parts = src.split(/(\[[^\]\n]*\]\([^)\n]*\)|`[^`\n]*`)/g)
   return parts
     .map((part) =>
-      part.startsWith('`') || part.startsWith('](')
+      part.startsWith('`') || part.startsWith('[')
         ? part
-        : part.replace(
-            /(\/workdir\/[^\s`)\]}>（），。；：、"']*)(?!\]\()/g,
-            (path) => `[${path}](${path})`,
-          ),
+        : part.replace(/(\/workdir\/[^\s`)\]}>（），。；：、"']*)/g, (path) => `[${path}](${path})`),
     )
     .join('')
 }

@@ -60,15 +60,21 @@ export function openWorkspace(path = ''): void {
   store.bump()
 }
 
-/** 在面板中预览指定文件；面板未开则先打开，预览列被收起时自动展开 */
+/**
+ * 从「正文产物路径 / 产物卡片预览」进入：只展示工作区的预览列，文件树列收起。
+ * 顶栏「工作区」按钮走 openWorkspace()，仍保持两列都显示，不受这里影响。
+ */
 export function previewFile(path: string): void {
   if (!state.open) {
     openWorkspace(path)
+    state.treeVisible = false
+    store.bump()
     return
   }
   state.previewPath = path
   state.version++
   state.previewVisible = true
+  state.treeVisible = false
   store.bump()
 }
 
